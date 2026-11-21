@@ -3,6 +3,7 @@ import { EMPTY_PORTAL_DATA, DEFAULT_TEACHER_CREDENTIALS } from '../data/defaultP
 import { Assignment, Course, LiveSessionHero, PortalState, ScheduleSession, Student, StudentActivityLog, StudentStatus, StudyMaterial, UploadedFileMeta } from '../types/portal';
 import { normalizeExternalUrl } from '../utils/formatters';
 import { createIsolatedAuthClient, supabase } from '../lib/supabase';
+import { selectWithOptionalColumns, writeWithOptionalColumns } from '../lib/supabase-schema';
 
 const sortSessions = (items: ScheduleSession[]) => [...items].sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`));
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
@@ -66,43 +67,40 @@ export interface ProfileQueryDebug {
 }
 
 async function loadProfilesQuery() {
-  const projections = [
-    'id,full_name,email,role,status,grade_level,notes,request_note,created_at',
-    'id,full_name,email,role,status',
-  ];
-  const queryErrors: ProfileQueryDebug['errors'] = [];
-
-  for (const projection of projections) {
-    try {
-      const { data, error } = await supabase.from('profiles').select(projection);
-      if (!error) {
-        const rows = data ?? [];
-        return {
-          data: rows,
-          error: undefined,
-          debug: {
-            rowCount: rows.length,
-            sample: rows.slice(0, 3).map((row: any) => ({ role: row.role ?? null, status: row.status ?? null })),
-            errors: queryErrors,
-          } satisfies ProfileQueryDebug,
-        };
-      }
-      queryErrors.push({ message: error.message, code: error.code ?? null, details: error.details ?? null });
-    } catch (error) {
-      const record = error && typeof error === 'object' ? error as { message?: unknown; code?: unknown; details?: unknown } : undefined;
-      queryErrors.push({
-        message: typeof record?.message === 'string' ? record.message : String(error || 'Unknown error'),
-        code: typeof record?.code === 'string' ? record.code : null,
-        details: typeof record?.details === 'string' ? record.details : null,
-      });
-    }
+  try {
+    const { data, error } = await selectWithOptionalColumns(
+      'profiles',
+      'id,full_name,email,role,status,grade_level,notes,request_note,created_at',
+      (projection) => supabase.from('profiles').select(projection),
+    );
+    const rows = error ? [] : data ?? [];
+    const queryErrors: ProfileQueryDebug['errors'] = error ? [{
+      message: error.message,
+      code: error.code ?? null,
+      details: error.details ?? null,
+    }] : [];
+    return {
+      data: rows,
+      error: error ? `profiles: ${getPortalErrorMessage(error)}` : undefined,
+      debug: {
+        rowCount: error ? null : rows.length,
+        sample: rows.slice(0, 3).map((row: any) => ({ role: row.role ?? null, status: row.status ?? null })),
+        errors: queryErrors,
+      } satisfies ProfileQueryDebug,
+    };
+  } catch (error) {
+    const record = error && typeof error === 'object' ? error as { message?: unknown; code?: unknown; details?: unknown } : undefined;
+    const queryError = {
+      message: typeof record?.message === 'string' ? record.message : String(error || 'Unknown error'),
+      code: typeof record?.code === 'string' ? record.code : null,
+      details: typeof record?.details === 'string' ? record.details : null,
+    };
+    return {
+      data: [],
+      error: `profiles: ${getPortalErrorMessage(error)}`,
+      debug: { rowCount: null, sample: [], errors: [queryError] } satisfies ProfileQueryDebug,
+    };
   }
-
-  return {
-    data: [],
-    error: `profiles: ${queryErrors.map((error) => `${error.message}${error.code ? ` (code: ${error.code})` : ''}`).join(' · ')}`,
-    debug: { rowCount: null, sample: [], errors: queryErrors } satisfies ProfileQueryDebug,
-  };
 }
 
 async function loadPortalState(): Promise<{ state: PortalState; errors: string[]; profileDebug: ProfileQueryDebug }> {
@@ -120,7 +118,11 @@ async function loadPortalState(): Promise<{ state: PortalState; errors: string[]
     authenticated ? loadProfilesQuery() : Promise.resolve({ data: [], error: undefined, debug: { rowCount: null, sample: [], errors: [] } satisfies ProfileQueryDebug }),
     loadQuery('courses', supabase.from('courses').select('*'), []),
     authenticated ? loadQuery('enrollments', supabase.from('enrollments').select('student_id,course_id'), []) : Promise.resolve({ data: [], error: undefined }),
-    authenticated ? loadQuery('app_settings', supabase.from('app_settings').select('meeting_link,live_hero').eq('id', 1).maybeSingle(), null) : Promise.resolve({ data: null, error: undefined }),
+    authenticated ? loadQuery('app_settings', selectWithOptionalColumns(
+      'app_settings',
+      'meeting_link,live_hero',
+      (projection) => supabase.from('app_settings').select(projection).eq('id', 1).maybeSingle(),
+    ), null) : Promise.resolve({ data: null, error: undefined }),
     authenticated ? loadQuery('class_sessions', supabase.from('class_sessions').select('*'), []) : Promise.resolve({ data: [], error: undefined }),
     authenticated ? loadQuery('assignments', supabase.from('assignments').select('*'), []) : Promise.resolve({ data: [], error: undefined }),
     authenticated ? loadQuery('materials', supabase.from('materials').select('*'), []) : Promise.resolve({ data: [], error: undefined }),
@@ -200,7 +202,7 @@ async function syncChanges(previous: PortalState, next: PortalState) {
     }
     if (updates.length) {
       const rows = await Promise.all(updates.map(toRow));
-      const { error } = await supabase.from(table).upsert(rows);
+      const { error } = await writeWithOptionalColumns(table, rows, (candidate) => supabase.from(table).upsert(candidate));
       if (error) throw error;
     }
   };
@@ -221,7 +223,7 @@ async function syncChanges(previous: PortalState, next: PortalState) {
     .filter((courseId) => !previousEnrollmentKeys.has(`${student.id}:${courseId}`))
     .map((courseId) => ({ student_id: student.id, course_id: courseId })));
   if (enrollmentRows.length) {
-    const { error } = await supabase.from('enrollments').upsert(enrollmentRows);
+    const { error } = await writeWithOptionalColumns('enrollments', enrollmentRows, (candidate) => supabase.from('enrollments').upsert(candidate));
     if (error) throw error;
   }
   await changed(previous.courses, next.courses, (c: Course) => ({
@@ -263,10 +265,11 @@ async function syncChanges(previous: PortalState, next: PortalState) {
     id: l.id, student_id: l.studentId, action: l.action, details: l.details || null, created_at: isoDate(l.timestamp),
   }), 'activity_logs');
   if (previous.meetingUrl !== next.meetingUrl || !same(previous.liveHero, next.liveHero)) {
-    const { error } = await supabase.from('app_settings').upsert({
+    const settingsPayload = {
       id: 1, meeting_link: next.meetingUrl, live_hero: next.liveHero,
       updated_at: new Date().toISOString(),
-    });
+    };
+    const { error } = await writeWithOptionalColumns('app_settings', settingsPayload, (candidate) => supabase.from('app_settings').upsert(candidate));
     if (error) throw error;
   }
 }
@@ -383,7 +386,7 @@ export function usePortalStore() {
         ...(gradeLevel ? { grade_level: gradeLevel } : {}),
         ...(requestNote ? { request_note: requestNote } : {}),
       };
-      const { error: profileError } = await supabase.from('profiles').upsert(profile, { onConflict: 'id' });
+      const { error: profileError } = await writeWithOptionalColumns('profiles', profile, (candidate) => supabase.from('profiles').upsert(candidate, { onConflict: 'id' }));
 
       if (profileError) {
         console.error('[auth] Student profile upsert failed', {
@@ -446,11 +449,11 @@ export function usePortalStore() {
         course_id: session.courseId, topic: session.topic, session_date: session.date, start_time: session.startTime,
         end_time: session.endTime, status: hero.status === 'live' ? 'Live' : session.status, meeting_url: nextHero?.meetingUrl || '',
       };
-      const { data, error } = await supabase.from('class_sessions').update(sessionPayload).eq('id', session.id).select();
+      const { data, error } = await writeWithOptionalColumns('class_sessions', sessionPayload, (candidate) => supabase.from('class_sessions').update(candidate).eq('id', session.id).select());
       if (!(await refreshAfterTeacherSave('class_sessions', { id: session.id, ...sessionPayload }, data, error))) return false;
     }
     const settingsPayload = { id: 1, meeting_link: current.meetingUrl, live_hero: nextHero, updated_at: new Date().toISOString() };
-    const { data, error } = await supabase.from('app_settings').upsert([settingsPayload]).select();
+    const { data, error } = await writeWithOptionalColumns('app_settings', [settingsPayload], (candidate) => supabase.from('app_settings').upsert(candidate).select());
     return refreshAfterTeacherSave('app_settings', settingsPayload, data, error);
   }, [refreshAfterTeacherSave]);
   const addCourse = useCallback(async (course: Omit<Course, 'id'>) => {
@@ -460,7 +463,7 @@ export function usePortalStore() {
       accent_color: course.accentColor, description: course.description || null, schedule_cadence: course.scheduleCadence || null,
       classes_per_week: course.classesPerWeek || null, weekly_slots: course.weeklySlots || [],
     };
-    const { data, error } = await supabase.from('courses').insert([payload]).select();
+    const { data, error } = await writeWithOptionalColumns('courses', [payload], (candidate) => supabase.from('courses').insert(candidate).select());
     return refreshAfterTeacherSave('courses', payload, data, error);
   }, [refreshAfterTeacherSave]);
   const updateCourse = useCallback(async (courseId: string, updates: Partial<Omit<Course, 'id'>>) => {
@@ -472,7 +475,7 @@ export function usePortalStore() {
       accent_color: course.accentColor, description: course.description || null, schedule_cadence: course.scheduleCadence || null,
       classes_per_week: course.classesPerWeek || null, weekly_slots: course.weeklySlots || [],
     };
-    const { data, error } = await supabase.from('courses').update(payload).eq('id', courseId).select();
+    const { data, error } = await writeWithOptionalColumns('courses', payload, (candidate) => supabase.from('courses').update(candidate).eq('id', courseId).select());
     return refreshAfterTeacherSave('courses', { id: courseId, ...payload }, data, error);
   }, [refreshAfterTeacherSave]);
   const deleteCourse = useCallback((courseId: string) => persistAndRefresh((prev) => ({
@@ -486,7 +489,7 @@ export function usePortalStore() {
       start_time: session.startTime, end_time: session.endTime, status: session.status,
       meeting_url: normalizeExternalUrl(session.meetingUrl),
     };
-    const { data, error } = await supabase.from('class_sessions').insert([payload]).select();
+    const { data, error } = await writeWithOptionalColumns('class_sessions', [payload], (candidate) => supabase.from('class_sessions').insert(candidate).select());
     return refreshAfterTeacherSave('class_sessions', payload, data, error);
   }, [refreshAfterTeacherSave]);
   const updateSession = useCallback(async (sessionId: string, updates: Partial<Omit<ScheduleSession, 'id'>>) => {
@@ -497,7 +500,7 @@ export function usePortalStore() {
       course_id: session.courseId, topic: session.topic, session_date: session.date, start_time: session.startTime,
       end_time: session.endTime, status: session.status, meeting_url: normalizeExternalUrl(session.meetingUrl),
     };
-    const { data, error } = await supabase.from('class_sessions').update(payload).eq('id', sessionId).select();
+    const { data, error } = await writeWithOptionalColumns('class_sessions', payload, (candidate) => supabase.from('class_sessions').update(candidate).eq('id', sessionId).select());
     return refreshAfterTeacherSave('class_sessions', { id: sessionId, ...payload }, data, error);
   }, [refreshAfterTeacherSave]);
   const deleteSession = useCallback((sessionId: string) => persistAndRefresh((prev) => ({ ...prev, sessions: prev.sessions.filter((s) => s.id !== sessionId) })), [persistAndRefresh]);
@@ -512,7 +515,7 @@ export function usePortalStore() {
         attachment_name: assignment.attachment?.fileName || null, attachment_size: assignment.attachment?.fileSize || null,
         attachment_type: assignment.attachment?.fileType || null,
       };
-      const { data, error } = await supabase.from('assignments').insert([payload]).select();
+      const { data, error } = await writeWithOptionalColumns('assignments', [payload], (candidate) => supabase.from('assignments').insert(candidate).select());
       return refreshAfterTeacherSave('assignments', payload, data, error);
     } catch (error) {
       reportTeacherSaveFailure('assignments', { id: assignmentId, ...assignment }, error);
@@ -532,7 +535,7 @@ export function usePortalStore() {
         attachment_name: assignment.attachment?.fileName || null, attachment_size: assignment.attachment?.fileSize || null,
         attachment_type: assignment.attachment?.fileType || null,
       };
-      const { data, error } = await supabase.from('assignments').update(payload).eq('id', assignmentId).select();
+      const { data, error } = await writeWithOptionalColumns('assignments', payload, (candidate) => supabase.from('assignments').update(candidate).eq('id', assignmentId).select());
       return refreshAfterTeacherSave('assignments', { id: assignmentId, ...payload }, data, error);
     } catch (error) {
       reportTeacherSaveFailure('assignments', assignment, error);
@@ -561,7 +564,7 @@ export function usePortalStore() {
         file_name: material.attachment?.fileName || null, file_size: material.attachment?.fileSize || null,
         file_type: material.attachment?.fileType || null,
       };
-      const { data, error } = await supabase.from('materials').insert([payload]).select();
+      const { data, error } = await writeWithOptionalColumns('materials', [payload], (candidate) => supabase.from('materials').insert(candidate).select());
       return refreshAfterTeacherSave('materials', payload, data, error);
     } catch (error) {
       reportTeacherSaveFailure('materials', { id: materialId, ...material }, error);
@@ -574,7 +577,7 @@ export function usePortalStore() {
     const meetingLink = normalizeExternalUrl(rawUrl);
     const liveHero = current.liveHero ? { ...current.liveHero, meetingUrl: meetingLink } : null;
     const payload = { id: 1, meeting_link: meetingLink, live_hero: liveHero, updated_at: new Date().toISOString() };
-    const { data, error } = await supabase.from('app_settings').upsert([payload]).select();
+    const { data, error } = await writeWithOptionalColumns('app_settings', [payload], (candidate) => supabase.from('app_settings').upsert(candidate).select());
     return refreshAfterTeacherSave('app_settings', payload, data, error);
   }, [refreshAfterTeacherSave]);
   const resetAllData = useCallback(() => persistState(() => EMPTY_PORTAL_DATA), [persistState]);

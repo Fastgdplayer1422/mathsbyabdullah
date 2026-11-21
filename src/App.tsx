@@ -14,6 +14,7 @@ import { TeacherAdmin } from './components/teacher/TeacherAdmin';
 import { usePortalStore } from './hooks/usePortalStore';
 import { StudentTab, TeacherTab, UserSession } from './types/portal';
 import { supabase } from './lib/supabase';
+import { selectWithOptionalColumns, writeWithOptionalColumns } from './lib/supabase-schema';
 
 export default function App() {
   const {
@@ -81,27 +82,30 @@ export default function App() {
   const loadAuthenticatedRole = useCallback(async (userId: string, email?: string | null) => {
     if (email?.trim().toLowerCase() === 'aa6993248@gmail.com') {
       setSession({ role: 'teacher' });
-      void supabase.from('profiles').upsert({
-        id: userId,
-        email,
-        role: 'teacher',
-        status: 'approved',
-      }, { onConflict: 'id' }).then(({ error }) => {
-        if (error && import.meta.env.DEV) {
-          console.error('[auth] Teacher profile upsert failed', { code: error.code });
-        }
-      });
+      const teacherProfile = { id: userId, email, role: 'teacher', status: 'approved' };
+      const { error: profileError } = await writeWithOptionalColumns('profiles', teacherProfile, (candidate) =>
+        supabase.from('profiles').upsert(candidate, { onConflict: 'id' }),
+      );
+      if (profileError) {
+        setSession(null);
+        notify('Teacher profile could not be loaded. Please try signing in again.');
+        if (import.meta.env.DEV) console.error('[auth] Teacher profile upsert failed', { code: profileError.code });
+        return;
+      }
       return;
     }
 
-    const { data: profile, error } = await supabase.from('profiles')
-      .select('id,role,status,full_name').eq('id', userId).maybeSingle();
+    const { data: profile, error } = await selectWithOptionalColumns(
+      'profiles',
+      'id,role,status,full_name',
+      (projection) => supabase.from('profiles').select(projection).eq('id', userId).maybeSingle(),
+    );
     if (error || !profile) {
       setSession(null);
       return;
     }
     setSession(profile.role?.trim().toLowerCase() === 'teacher' ? { role: 'teacher' } : { role: 'student', studentId: profile.id });
-  }, []);
+  }, [notify]);
 
   useEffect(() => {
     let active = true;
@@ -155,23 +159,26 @@ export default function App() {
     const userEmail = data.user.email?.trim().toLowerCase();
     if (expectedRole === 'teacher' && userEmail === 'aa6993248@gmail.com') {
       setSession({ role: 'teacher' });
-      void supabase.from('profiles').upsert({
-        id: data.user.id,
-        email: data.user.email,
-        role: 'teacher',
-        status: 'approved',
-      }, { onConflict: 'id' }).then(({ error: profileError }) => {
-        if (profileError && import.meta.env.DEV) {
-          console.error('[auth] Teacher profile upsert failed', { code: profileError.code,  });
-        }
-      });
+      const teacherProfile = { id: data.user.id, email: data.user.email, role: 'teacher', status: 'approved' };
+      const { error: profileError } = await writeWithOptionalColumns('profiles', teacherProfile, (candidate) =>
+        supabase.from('profiles').upsert(candidate, { onConflict: 'id' }),
+      );
+      if (profileError) {
+        setSession(null);
+        await supabase.auth.signOut();
+        if (import.meta.env.DEV) console.error('[auth] Teacher profile upsert failed', { code: profileError.code });
+        return { error: 'Teacher profile could not be saved. Please try again.' };
+      }
       setAuthLoading(false);
       notify('Welcome Abdullah. Teacher Admin active.');
       return {};
     }
 
-    const { data: profile, error: profileError } = await supabase.from('profiles')
-      .select('id,role,status,full_name').eq('id', data.user.id).maybeSingle();
+    const { data: profile, error: profileError } = await selectWithOptionalColumns(
+      'profiles',
+      'id,role,status,full_name,email',
+      (projection) => supabase.from('profiles').select(projection).eq('id', data.user.id).maybeSingle(),
+    );
     if (profileError || !profile || profile.role?.trim().toLowerCase() !== expectedRole) {
       await supabase.auth.signOut();
       if (profileError && import.meta.env.DEV) {
@@ -184,7 +191,8 @@ export default function App() {
     if (expectedRole === 'student') {
       if (profile.status?.trim().toLowerCase() === 'approved') {
         logActivity(profile.id, 'Logged In', 'Student session started');
-        notify(`Welcome back, ${profile.full_name.split(' ')[0]}!`);
+        const displayName = profile.full_name || profile.email || 'student';
+        notify(`Welcome back, ${displayName.split(' ')[0]}!`);
       } else {
         notify('Your account is awaiting teacher approval.');
       }
