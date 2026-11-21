@@ -117,7 +117,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
-    const result = await onTeacherLogin(teacherEmail.trim().toLowerCase(), teacherPassword, teacherRememberMe);
+    const result = await onTeacherLogin(teacherEmail.trim().toLowerCase(), teacherPassword.trim(), teacherRememberMe);
     if (result.error) setErrorMessage(result.error);
   };
 

@@ -66,7 +66,22 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [toastMessage]);
 
-  const loadAuthenticatedRole = useCallback(async (userId: string) => {
+  const loadAuthenticatedRole = useCallback(async (userId: string, email?: string | null) => {
+    if (email?.trim().toLowerCase() === 'aa6993248@gmail.com') {
+      setSession({ role: 'teacher' });
+      void supabase.from('profiles').upsert({
+        id: userId,
+        email,
+        role: 'teacher',
+        status: 'approved',
+      }, { onConflict: 'id' }).then(({ error }) => {
+        if (error && import.meta.env.DEV) {
+          console.error('[auth] Teacher profile upsert failed', { code: error.code });
+        }
+      });
+      return;
+    }
+
     const { data: profile, error } = await supabase.from('profiles')
       .select('id,role,status,full_name').eq('id', userId).maybeSingle();
     if (error || !profile) {
@@ -86,13 +101,13 @@ export default function App() {
         setAuthLoading(false);
         return;
       }
-      await loadAuthenticatedRole(data.session.user.id);
+      await loadAuthenticatedRole(data.session.user.id, data.session.user.email);
       if (active) setAuthLoading(false);
     };
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, authSession) => {
       window.setTimeout(() => {
         if (!active) return;
-        if (authSession) void loadAuthenticatedRole(authSession.user.id).finally(() => setAuthLoading(false));
+        if (authSession) void loadAuthenticatedRole(authSession.user.id, authSession.user.email).finally(() => setAuthLoading(false));
         else { setSession(null); setAuthLoading(false); }
       }, 0);
     });
@@ -107,16 +122,50 @@ export default function App() {
   }, [notify]);
 
   const authenticate = useCallback(async (email: string, password: string, expectedRole: 'student' | 'teacher') => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const normalizedEmail = email.trim().toLowerCase();
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: normalizedEmail,
+      password: password.trim(),
+    });
     if (error || !data.user) {
-      const message = error?.message.toLowerCase() || '';
-      return { error: message.includes('email not confirmed') ? 'Please confirm your email address before signing in.' : 'Invalid email or password.' };
+      if (error && import.meta.env.DEV) {
+        console.error('[auth] Supabase sign-in failed', { code: error.code, status: error.status });
+      }
+      if (error?.code === 'invalid_credentials' || error?.code === 'user_not_found' || /invalid login credentials/i.test(error?.message || '')) {
+        return { error: 'Invalid email or password.' };
+      }
+      if (/email not confirmed/i.test(error?.message || '')) {
+        return { error: 'Please confirm your email address before signing in.' };
+      }
+      return { error: error?.message || 'Unable to sign in. Please try again.' };
     }
+
+    const userEmail = data.user.email?.trim().toLowerCase();
+    if (expectedRole === 'teacher' && userEmail === 'aa6993248@gmail.com') {
+      setSession({ role: 'teacher' });
+      void supabase.from('profiles').upsert({
+        id: data.user.id,
+        email: data.user.email,
+        role: 'teacher',
+        status: 'approved',
+      }, { onConflict: 'id' }).then(({ error: profileError }) => {
+        if (profileError && import.meta.env.DEV) {
+          console.error('[auth] Teacher profile upsert failed', { code: profileError.code,  });
+        }
+      });
+      setAuthLoading(false);
+      notify('Welcome Abdullah. Teacher Admin active.');
+      return {};
+    }
+
     const { data: profile, error: profileError } = await supabase.from('profiles')
       .select('id,role,status,full_name').eq('id', data.user.id).maybeSingle();
     if (profileError || !profile || profile.role !== expectedRole) {
       await supabase.auth.signOut();
-      return { error: expectedRole === 'teacher' ? 'Invalid email or password.' : 'Invalid email or password.' };
+      if (profileError && import.meta.env.DEV) {
+        console.error('[auth] Profile lookup failed', { code: profileError.code,  });
+      }
+      return { error: profileError?.message || 'Invalid email or password.' };
     }
     setSession(expectedRole === 'teacher' ? { role: 'teacher' } : { role: 'student', studentId: profile.id });
     setAuthLoading(false);
