@@ -8,7 +8,7 @@ const optionalColumns: Record<string, ReadonlySet<string>> = {
   courses: new Set(['description', 'schedule_cadence', 'classes_per_week', 'weekly_slots']),
   enrollments: new Set(),
   materials: new Set(['meta_info', 'url', 'storage_path', 'file_name', 'file_size', 'file_type']),
-  submissions: new Set(['assignment_id', 'submission_url', 'submission_note', 'submitted_at', 'grade', 'teacher_feedback', 'storage_path', 'file_name', 'file_size', 'file_type']),
+  submissions: new Set(['submission_url', 'submission_note', 'submitted_at', 'grade', 'teacher_feedback', 'storage_path', 'file_name', 'file_size', 'file_type']),
   class_sessions: new Set(['meeting_url']),
   assignments: new Set(['description', 'resource_url', 'resource_label', 'attachment_path', 'attachment_name', 'attachment_size', 'attachment_type']),
   activity_logs: new Set(['details', 'created_at']),

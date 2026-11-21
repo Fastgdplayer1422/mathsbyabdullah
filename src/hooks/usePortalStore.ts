@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { EMPTY_PORTAL_DATA, DEFAULT_TEACHER_CREDENTIALS } from '../data/defaultPortalData';
-import { Assignment, Course, LiveSessionHero, PortalState, ScheduleSession, Student, StudentActivityLog, StudentStatus, StudyMaterial, UploadedFileMeta } from '../types/portal';
+import { Assignment, Course, LiveSessionHero, PortalState, ScheduleSession, Student, StudentActivityLog, StudentStatus, StudentSubmission, SubmissionSaveResult, StudyMaterial, UploadedFileMeta } from '../types/portal';
 import { normalizeExternalUrl } from '../utils/formatters';
 import { createIsolatedAuthClient, supabase } from '../lib/supabase';
 import { selectWithOptionalColumns, writeWithOptionalColumns } from '../lib/supabase-schema';
@@ -39,6 +39,21 @@ async function signedAttachment(bucket: string, path: string | null, fileName: s
   } catch {
     return undefined;
   }
+}
+
+async function mapSubmissionRow(row: any): Promise<StudentSubmission> {
+  return {
+    id: row.id,
+    assignmentId: row.assignment_id || '',
+    studentId: row.student_id || '',
+    status: row.status || 'Pending',
+    submissionUrl: row.submission_url || undefined,
+    submissionNote: row.submission_note || undefined,
+    submittedAt: row.submitted_at || undefined,
+    grade: row.grade || undefined,
+    teacherFeedback: row.teacher_feedback || undefined,
+    attachment: await signedAttachment('student-submissions', row.storage_path, row.file_name, row.file_size, row.file_type),
+  };
 }
 
 function getPortalErrorMessage(error: unknown) {
@@ -107,7 +122,7 @@ async function loadProfilesQuery() {
   }
 }
 
-async function loadPortalState(): Promise<{ state: PortalState; errors: string[]; profileDebug: ProfileQueryDebug }> {
+async function loadPortalState(): Promise<{ state: PortalState; errors: string[]; profileDebug: ProfileQueryDebug; submissionLoadError: string | null }> {
   let authenticated = false;
   const errors: string[] = [];
   try {
@@ -169,12 +184,7 @@ async function loadPortalState(): Promise<{ state: PortalState; errors: string[]
     metaInfo: row.meta_info, url: row.url,
     attachment: await signedAttachment('course-materials', row.storage_path, row.file_name, row.file_size, row.file_type),
   })));
-  const mappedSubmissions = await Promise.all((submissions.data || []).map(async (row: any) => ({
-    id: row.id, assignmentId: row.assignment_id || '', studentId: row.student_id, status: row.status,
-    submissionUrl: row.submission_url || undefined, submissionNote: row.submission_note || undefined,
-    submittedAt: row.submitted_at, grade: row.grade || undefined, teacherFeedback: row.teacher_feedback || undefined,
-    attachment: await signedAttachment('student-submissions', row.storage_path, row.file_name, row.file_size, row.file_type),
-  })));
+  const mappedSubmissions = await Promise.all((submissions.data || []).map(mapSubmissionRow));
   return {
     state: {
       ...EMPTY_PORTAL_DATA,
@@ -191,6 +201,7 @@ async function loadPortalState(): Promise<{ state: PortalState; errors: string[]
     },
     errors,
     profileDebug: profiles.debug,
+    submissionLoadError: errors.find((error) => error.startsWith('submissions:')) || null,
   };
 }
 
@@ -282,6 +293,8 @@ export function usePortalStore() {
   const [state, setState] = useState<PortalState>(EMPTY_PORTAL_DATA);
   const stateRef = useRef(state);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [submissionLoadError, setSubmissionLoadError] = useState<string | null>(null);
+  const [submissionsReady, setSubmissionsReady] = useState(false);
   const [profileDebug, setProfileDebug] = useState<ProfileQueryDebug>({ rowCount: null, sample: [], errors: [] });
   const [loading, setLoading] = useState(true);
   const refreshSequence = useRef(0);
@@ -289,14 +302,24 @@ export function usePortalStore() {
     const requestId = ++refreshSequence.current;
     setLoading(true);
     try {
-      const { state: next, errors, profileDebug: nextProfileDebug } = await loadPortalState();
+      const { state: next, errors, profileDebug: nextProfileDebug, submissionLoadError: nextSubmissionLoadError } = await loadPortalState();
       if (requestId !== refreshSequence.current) return;
-      stateRef.current = next;
-      setState(next);
+      const refreshedState = nextSubmissionLoadError
+        ? { ...next, submissions: stateRef.current.submissions }
+        : next;
+      stateRef.current = refreshedState;
+      setState(refreshedState);
       setProfileDebug(nextProfileDebug);
       setLoadError(errors.length ? errors.join(' · ') : null);
+      setSubmissionLoadError(nextSubmissionLoadError);
+      setSubmissionsReady(!nextSubmissionLoadError);
     } catch (error) {
-      if (requestId === refreshSequence.current) setLoadError(`portal data: ${getPortalErrorMessage(error)}`);
+      if (requestId === refreshSequence.current) {
+        const message = getPortalErrorMessage(error);
+        setLoadError(`portal data: ${message}`);
+        setSubmissionLoadError(`Submission status could not be verified: ${message}`);
+        setSubmissionsReady(false);
+      }
     } finally {
       if (requestId === refreshSequence.current) setLoading(false);
     }
@@ -547,11 +570,104 @@ export function usePortalStore() {
     }
   }, [refreshAfterTeacherSave, reportTeacherSaveFailure]);
   const deleteAssignment = useCallback((assignmentId: string) => persistAndRefresh((prev) => ({ ...prev, assignments: prev.assignments.filter((a) => a.id !== assignmentId), submissions: prev.submissions.filter((s) => s.assignmentId !== assignmentId) })), [persistAndRefresh]);
-  const submitAssignment = useCallback((assignmentId: string, studentId: string, submissionUrl: string, submissionNote: string, attachment?: UploadedFileMeta) => persistState((prev) => {
-    const existing = prev.submissions.find((s) => s.assignmentId === assignmentId && s.studentId === studentId);
-    const next = { id: existing?.id || id(), assignmentId, studentId, status: 'Submitted' as const, submissionUrl: normalizeExternalUrl(submissionUrl), submissionNote: submissionNote.trim(), submittedAt: new Date().toISOString(), attachment: attachment || existing?.attachment };
-    return { ...prev, submissions: [next, ...prev.submissions.filter((s) => s.id !== existing?.id)], activityLogs: [{ id: id(), studentId, action: 'Marked Assignment as Submitted', details: prev.assignments.find((a) => a.id === assignmentId)?.title || 'Coursework', timestamp: new Date().toISOString() }, ...prev.activityLogs] };
-  }), [persistState]);
+  const submitAssignment = useCallback(async (
+    assignmentId: string,
+    studentId: string,
+    submissionUrl: string,
+    submissionNote: string,
+    attachment?: UploadedFileMeta
+  ): Promise<SubmissionSaveResult> => {
+    if (!submissionsReady) {
+      return { success: false, error: 'Saved submissions are still loading or could not be verified. Refresh the portal before submitting.' };
+    }
+    const assignmentDbId = databaseUuid(assignmentId);
+    const studentDbId = databaseUuid(studentId);
+    if (!assignmentDbId || !studentDbId) {
+      return { success: false, error: 'This assignment or student is missing a valid database ID. Refresh the portal and try again.' };
+    }
+
+    const currentState = stateRef.current;
+    const existing = currentState.submissions.find((submission) =>
+      submission.assignmentId === assignmentId && submission.studentId === studentId
+    );
+
+    try {
+      const { data: existingRow, error: lookupError } = await supabase
+        .from('submissions')
+        .select('id')
+        .eq('assignment_id', assignmentDbId)
+        .eq('student_id', studentDbId)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+
+      const submissionId = existingRow?.id || existing?.id || id();
+      const submittedAt = new Date().toISOString();
+      const storagePath = attachment?.fileData?.startsWith('data:')
+        ? await uploadAttachment('student-submissions', `${studentDbId}/${submissionId}.pdf`, attachment)
+        : attachment?.storagePath || existing?.attachment?.storagePath || null;
+      const payload = {
+        id: submissionId,
+        assignment_id: assignmentDbId,
+        student_id: studentDbId,
+        status: 'Submitted',
+        submission_url: normalizeExternalUrl(submissionUrl) || null,
+        submission_note: submissionNote.trim() || null,
+        submitted_at: submittedAt,
+        grade: null,
+        teacher_feedback: null,
+        storage_path: storagePath,
+        file_name: attachment?.fileName || existing?.attachment?.fileName || null,
+        file_size: attachment?.fileSize || existing?.attachment?.fileSize || null,
+        file_type: attachment?.fileType || existing?.attachment?.fileType || null,
+      };
+      const { data, error } = await writeWithOptionalColumns(
+        'submissions',
+        payload,
+        (candidate) => supabase.from('submissions').upsert(candidate, { onConflict: 'id' }).select().single()
+      );
+      if (error) throw error;
+      if (!data?.id) throw new Error('Supabase did not return the saved submission row.');
+      if (data.assignment_id !== assignmentDbId || data.student_id !== studentDbId || data.status !== 'Submitted') {
+        throw new Error('The saved submission did not return the expected assignment, student, and status values.');
+      }
+
+      const savedSubmission = await mapSubmissionRow(data);
+      const assignmentTitle = currentState.assignments.find((assignment) => assignment.id === assignmentId)?.title || 'Coursework';
+      const activityLog = {
+        id: id(),
+        student_id: studentDbId,
+        action: 'Marked Assignment as Submitted',
+        details: assignmentTitle,
+        created_at: submittedAt,
+      };
+      const { error: activityError } = await writeWithOptionalColumns(
+        'activity_logs',
+        activityLog,
+        (candidate) => supabase.from('activity_logs').upsert(candidate, { onConflict: 'id' })
+      );
+
+      const nextState = {
+        ...stateRef.current,
+        submissions: [savedSubmission, ...stateRef.current.submissions.filter((submission) =>
+          !(submission.assignmentId === assignmentId && submission.studentId === studentId)
+        )],
+        activityLogs: activityError
+          ? stateRef.current.activityLogs
+          : [{ id: activityLog.id, studentId, action: activityLog.action, details: activityLog.details, timestamp: submittedAt }, ...stateRef.current.activityLogs],
+      };
+      stateRef.current = nextState;
+      setState(nextState);
+
+      return {
+        success: true,
+        warning: activityError
+          ? `Your submission was saved, but the activity log could not be recorded: ${getPortalErrorMessage(activityError)}`
+          : undefined,
+      };
+    } catch (error) {
+      return { success: false, error: `Supabase could not save this submission: ${getPortalErrorMessage(error)}` };
+    }
+  }, [submissionsReady]);
   const retractSubmission = useCallback((assignmentId: string, studentId: string) => persistState((prev) => ({ ...prev, submissions: prev.submissions.filter((s) => !(s.assignmentId === assignmentId && s.studentId === studentId)) })), [persistState]);
   const gradeAssignment = useCallback((assignmentId: string, studentId: string, grade: string, teacherFeedback: string) => persistState((prev) => {
     const existing = prev.submissions.find((s) => s.assignmentId === assignmentId && s.studentId === studentId);
@@ -586,5 +702,5 @@ export function usePortalStore() {
   }, [refreshAfterTeacherSave]);
   const resetAllData = useCallback(() => persistState(() => EMPTY_PORTAL_DATA), [persistState]);
 
-  return { state, loading, loadError, profileDebug, refreshPortalData, logActivity, registerStudent, approveStudent, rejectStudent, changeStudentStatus, addStudent, updateStudent, deleteStudent, toggleStudentEnrollment, publishLiveHero, addCourse, updateCourse, deleteCourse, addSession, updateSession, deleteSession, addAssignment, updateAssignment, deleteAssignment, submitAssignment, retractSubmission, gradeAssignment, addMaterial, deleteMaterial, saveMeetingLink, resetAllData };
+  return { state, loading, loadError, submissionLoadError, submissionsReady, profileDebug, refreshPortalData, logActivity, registerStudent, approveStudent, rejectStudent, changeStudentStatus, addStudent, updateStudent, deleteStudent, toggleStudentEnrollment, publishLiveHero, addCourse, updateCourse, deleteCourse, addSession, updateSession, deleteSession, addAssignment, updateAssignment, deleteAssignment, submitAssignment, retractSubmission, gradeAssignment, addMaterial, deleteMaterial, saveMeetingLink, resetAllData };
 }
