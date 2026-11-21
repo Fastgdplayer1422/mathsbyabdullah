@@ -274,28 +274,6 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
         </button>
       </div>
 
-      <section aria-label="Profiles query diagnostics" className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-sm text-[#18181B]">
-        <h3 className="font-semibold">Temporary profiles query diagnostics</h3>
-        <p className="mt-1 text-xs text-[#52525B]">
-          Rows returned: {profileDebug.rowCount === null ? 'Query failed or not available' : profileDebug.rowCount}
-        </p>
-        <div className="mt-2 flex flex-col gap-1 text-xs">
-          <span className="font-medium">Raw role/status values from the first 3 rows</span>
-          {profileDebug.sample.length ? profileDebug.sample.map((row, index) => (
-            <code key={index} className="w-fit rounded bg-white/80 px-2 py-1">
-              Row {index + 1}: role={JSON.stringify(row.role)}, status={JSON.stringify(row.status)}
-            </code>
-          )) : <span className="text-[#71717A]">No rows returned.</span>}
-        </div>
-        {profileDebug.errors.map((error, index) => (
-          <div key={`${error.code}-${index}`} className="mt-2 rounded-md border border-amber-200 bg-white/70 p-2 text-xs">
-            <p><strong>Supabase error.message:</strong> <code>{error.message}</code></p>
-            <p><strong>Supabase error.code:</strong> <code>{error.code ?? 'null'}</code></p>
-            <p><strong>Supabase error.details:</strong> <code>{error.details ?? 'null'}</code></p>
-          </div>
-        ))}
-      </section>
-
       {/* 1. Pending Approvals Queue (at the top) */}
       <section aria-label="Pending Approvals" className="space-y-3">
         <div className="flex items-center justify-between">

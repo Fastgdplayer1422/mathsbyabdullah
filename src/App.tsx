@@ -382,7 +382,7 @@ export default function App() {
       <main className="mx-auto w-full max-w-[1240px] flex-1 px-4 py-8 sm:px-6 lg:py-10">
         {loadError && (
           <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-            We could not load portal data from Supabase: {loadError}
+            Supabase save/load error: {loadError}
           </div>
         )}
         <TeacherAdmin

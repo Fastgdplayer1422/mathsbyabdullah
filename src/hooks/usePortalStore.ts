@@ -418,29 +418,29 @@ export function usePortalStore() {
   const toggleStudentEnrollment = useCallback((studentId: string, courseId: string) => persistAndRefresh((prev) => ({
     ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, enrolledCourseIds: s.enrolledCourseIds.includes(courseId) ? s.enrolledCourseIds.filter((id) => id !== courseId) : [...s.enrolledCourseIds, courseId] } : s),
   })), [persistAndRefresh]);
-  const publishLiveHero = useCallback((hero: Omit<LiveSessionHero, 'updatedAt'> | null) => persistState((prev) => ({
+  const publishLiveHero = useCallback((hero: Omit<LiveSessionHero, 'updatedAt'> | null) => persistAndRefresh((prev) => ({
     ...prev, liveHero: hero ? { ...hero, meetingUrl: normalizeExternalUrl(hero.meetingUrl), updatedAt: new Date().toISOString() } : null,
     sessions: hero?.sessionId ? prev.sessions.map((session) => session.id === hero.sessionId ? { ...session, meetingUrl: normalizeExternalUrl(hero.meetingUrl), status: hero.status === 'live' ? 'Live' : session.status } : session) : prev.sessions,
-  })), [persistState]);
+  })), [persistAndRefresh]);
   const addCourse = useCallback((course: Omit<Course, 'id'>) => {
-    const next = { ...course, id: id('course') }; persistState((prev) => ({ ...prev, courses: [...prev.courses, next] })); return next;
-  }, [persistState]);
-  const updateCourse = useCallback((courseId: string, updates: Partial<Omit<Course, 'id'>>) => persistState((prev) => ({ ...prev, courses: prev.courses.map((c) => c.id === courseId ? { ...c, ...updates } : c) })), [persistState]);
-  const deleteCourse = useCallback((courseId: string) => persistState((prev) => ({
+    const next = { ...course, id: id('course') }; void persistAndRefresh((prev) => ({ ...prev, courses: [...prev.courses, next] })); return next;
+  }, [persistAndRefresh]);
+  const updateCourse = useCallback((courseId: string, updates: Partial<Omit<Course, 'id'>>) => persistAndRefresh((prev) => ({ ...prev, courses: prev.courses.map((c) => c.id === courseId ? { ...c, ...updates } : c) })), [persistAndRefresh]);
+  const deleteCourse = useCallback((courseId: string) => persistAndRefresh((prev) => ({
     ...prev, courses: prev.courses.filter((c) => c.id !== courseId), students: prev.students.map((s) => ({ ...s, enrolledCourseIds: s.enrolledCourseIds.filter((id) => id !== courseId) })),
     sessions: prev.sessions.filter((s) => s.courseId !== courseId), assignments: prev.assignments.filter((a) => a.courseId !== courseId), materials: prev.materials.filter((m) => m.courseId !== courseId),
     liveHero: prev.liveHero?.courseId === courseId ? null : prev.liveHero,
-  })), [persistState]);
+  })), [persistAndRefresh]);
   const addSession = useCallback((session: Omit<ScheduleSession, 'id'>) => {
-    const next = { ...session, id: id('session'), meetingUrl: normalizeExternalUrl(session.meetingUrl) }; persistState((prev) => ({ ...prev, sessions: sortSessions([...prev.sessions, next]) })); return next;
-  }, [persistState]);
-  const updateSession = useCallback((sessionId: string, updates: Partial<Omit<ScheduleSession, 'id'>>) => persistState((prev) => ({ ...prev, sessions: sortSessions(prev.sessions.map((s) => s.id === sessionId ? { ...s, ...updates, meetingUrl: updates.meetingUrl === undefined ? s.meetingUrl : normalizeExternalUrl(updates.meetingUrl) } : s)) })), [persistState]);
-  const deleteSession = useCallback((sessionId: string) => persistState((prev) => ({ ...prev, sessions: prev.sessions.filter((s) => s.id !== sessionId) })), [persistState]);
+    const next = { ...session, id: id('session'), meetingUrl: normalizeExternalUrl(session.meetingUrl) }; void persistAndRefresh((prev) => ({ ...prev, sessions: sortSessions([...prev.sessions, next]) })); return next;
+  }, [persistAndRefresh]);
+  const updateSession = useCallback((sessionId: string, updates: Partial<Omit<ScheduleSession, 'id'>>) => persistAndRefresh((prev) => ({ ...prev, sessions: sortSessions(prev.sessions.map((s) => s.id === sessionId ? { ...s, ...updates, meetingUrl: updates.meetingUrl === undefined ? s.meetingUrl : normalizeExternalUrl(updates.meetingUrl) } : s)) })), [persistAndRefresh]);
+  const deleteSession = useCallback((sessionId: string) => persistAndRefresh((prev) => ({ ...prev, sessions: prev.sessions.filter((s) => s.id !== sessionId) })), [persistAndRefresh]);
   const addAssignment = useCallback((assignment: Omit<Assignment, 'id'>) => {
-    const next = { ...assignment, id: id('assignment'), resourceUrl: normalizeExternalUrl(assignment.resourceUrl) }; persistState((prev) => ({ ...prev, assignments: [next, ...prev.assignments] })); return next;
-  }, [persistState]);
-  const updateAssignment = useCallback((assignmentId: string, updates: Partial<Omit<Assignment, 'id'>>) => persistState((prev) => ({ ...prev, assignments: prev.assignments.map((a) => a.id === assignmentId ? { ...a, ...updates } : a) })), [persistState]);
-  const deleteAssignment = useCallback((assignmentId: string) => persistState((prev) => ({ ...prev, assignments: prev.assignments.filter((a) => a.id !== assignmentId), submissions: prev.submissions.filter((s) => s.assignmentId !== assignmentId) })), [persistState]);
+    const next = { ...assignment, id: id('assignment'), resourceUrl: normalizeExternalUrl(assignment.resourceUrl) }; void persistAndRefresh((prev) => ({ ...prev, assignments: [next, ...prev.assignments] })); return next;
+  }, [persistAndRefresh]);
+  const updateAssignment = useCallback((assignmentId: string, updates: Partial<Omit<Assignment, 'id'>>) => persistAndRefresh((prev) => ({ ...prev, assignments: prev.assignments.map((a) => a.id === assignmentId ? { ...a, ...updates } : a) })), [persistAndRefresh]);
+  const deleteAssignment = useCallback((assignmentId: string) => persistAndRefresh((prev) => ({ ...prev, assignments: prev.assignments.filter((a) => a.id !== assignmentId), submissions: prev.submissions.filter((s) => s.assignmentId !== assignmentId) })), [persistAndRefresh]);
   const submitAssignment = useCallback((assignmentId: string, studentId: string, submissionUrl: string, submissionNote: string, attachment?: UploadedFileMeta) => persistState((prev) => {
     const existing = prev.submissions.find((s) => s.assignmentId === assignmentId && s.studentId === studentId);
     const next = { id: existing?.id || id('submission'), assignmentId, studentId, status: 'Submitted' as const, submissionUrl: normalizeExternalUrl(submissionUrl), submissionNote: submissionNote.trim(), submittedAt: new Date().toISOString(), attachment: attachment || existing?.attachment };
@@ -453,10 +453,10 @@ export function usePortalStore() {
     return { ...prev, submissions: [next, ...prev.submissions.filter((s) => s.id !== existing?.id)], activityLogs: [{ id: id('log'), studentId, action: `Graded Assignment: ${prev.assignments.find((a) => a.id === assignmentId)?.title || 'Coursework'}`, details: `Score: ${grade.trim()}`, timestamp: new Date().toISOString() }, ...prev.activityLogs] };
   }), [persistState]);
   const addMaterial = useCallback((material: Omit<StudyMaterial, 'id'>) => {
-    const next = { ...material, id: id('material'), url: normalizeExternalUrl(material.url) }; persistState((prev) => ({ ...prev, materials: [next, ...prev.materials] })); return next;
-  }, [persistState]);
-  const deleteMaterial = useCallback((materialId: string) => persistState((prev) => ({ ...prev, materials: prev.materials.filter((m) => m.id !== materialId) })), [persistState]);
-  const saveMeetingLink = useCallback((rawUrl: string) => persistState((prev) => ({ ...prev, meetingUrl: normalizeExternalUrl(rawUrl), liveHero: prev.liveHero ? { ...prev.liveHero, meetingUrl: normalizeExternalUrl(rawUrl) } : null })), [persistState]);
+    const next = { ...material, id: id('material'), url: normalizeExternalUrl(material.url) }; void persistAndRefresh((prev) => ({ ...prev, materials: [next, ...prev.materials] })); return next;
+  }, [persistAndRefresh]);
+  const deleteMaterial = useCallback((materialId: string) => persistAndRefresh((prev) => ({ ...prev, materials: prev.materials.filter((m) => m.id !== materialId) })), [persistAndRefresh]);
+  const saveMeetingLink = useCallback((rawUrl: string) => persistAndRefresh((prev) => ({ ...prev, meetingUrl: normalizeExternalUrl(rawUrl), liveHero: prev.liveHero ? { ...prev.liveHero, meetingUrl: normalizeExternalUrl(rawUrl) } : null })), [persistAndRefresh]);
   const resetAllData = useCallback(() => persistState(() => EMPTY_PORTAL_DATA), [persistState]);
 
   return { state, loading, loadError, profileDebug, refreshPortalData, logActivity, registerStudent, approveStudent, rejectStudent, changeStudentStatus, addStudent, updateStudent, deleteStudent, toggleStudentEnrollment, publishLiveHero, addCourse, updateCourse, deleteCourse, addSession, updateSession, deleteSession, addAssignment, updateAssignment, deleteAssignment, submitAssignment, retractSubmission, gradeAssignment, addMaterial, deleteMaterial, saveMeetingLink, resetAllData };
