@@ -6,7 +6,11 @@ import { createIsolatedAuthClient, supabase } from '../lib/supabase';
 import { selectWithOptionalColumns, writeWithOptionalColumns } from '../lib/supabase-schema';
 
 const sortSessions = (items: ScheduleSession[]) => [...items].sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`));
-const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
+const id = () => crypto.randomUUID();
+const databaseUuid = (value: string | null | undefined) =>
+  value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    ? value
+    : null;
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const isoDate = (value?: string) => {
   if (!value) return new Date().toISOString();
@@ -221,7 +225,7 @@ async function syncChanges(previous: PortalState, next: PortalState) {
   }
   const enrollmentRows = next.students.flatMap((student) => student.enrolledCourseIds
     .filter((courseId) => !previousEnrollmentKeys.has(`${student.id}:${courseId}`))
-    .map((courseId) => ({ student_id: student.id, course_id: courseId })));
+    .map((courseId) => ({ student_id: databaseUuid(student.id), course_id: databaseUuid(courseId) })));
   if (enrollmentRows.length) {
     const { error } = await writeWithOptionalColumns('enrollments', enrollmentRows, (candidate) => supabase.from('enrollments').upsert(candidate));
     if (error) throw error;
@@ -232,13 +236,13 @@ async function syncChanges(previous: PortalState, next: PortalState) {
     classes_per_week: c.classesPerWeek || null, weekly_slots: c.weeklySlots || [],
   }), 'courses');
   await changed(previous.sessions, next.sessions, (s: ScheduleSession) => ({
-    id: s.id, course_id: s.courseId, topic: s.topic, session_date: s.date, start_time: s.startTime,
+    id: s.id, course_id: databaseUuid(s.courseId), topic: s.topic, session_date: s.date, start_time: s.startTime,
     end_time: s.endTime, status: s.status, meeting_url: s.meetingUrl,
   }), 'class_sessions');
   await changed(previous.assignments, next.assignments, async (a: Assignment) => {
     const attachmentPath = a.attachment?.fileData?.startsWith('data:') ? await uploadAttachment('course-materials', `assignments/${a.id}/${a.attachment.fileName}`, a.attachment) : a.attachment?.storagePath || null;
     return {
-      id: a.id, course_id: a.courseId, title: a.title, due_date: a.dueDate, description: a.description,
+      id: a.id, course_id: databaseUuid(a.courseId), title: a.title, due_date: a.dueDate, description: a.description,
       resource_url: a.resourceUrl, resource_label: a.resourceLabel || null, attachment_path: attachmentPath,
       attachment_name: a.attachment?.fileName || null, attachment_size: a.attachment?.fileSize || null, attachment_type: a.attachment?.fileType || null,
     };
@@ -246,7 +250,7 @@ async function syncChanges(previous: PortalState, next: PortalState) {
   await changed(previous.materials, next.materials, async (m: StudyMaterial) => {
     const storagePath = m.attachment?.fileData?.startsWith('data:') ? await uploadAttachment('course-materials', `materials/${m.courseId}/${m.id}/${m.attachment.fileName}`, m.attachment) : m.attachment?.storagePath || null;
     return {
-      id: m.id, course_id: m.courseId, title: m.title, type: m.type, material_date: m.date,
+      id: m.id, course_id: databaseUuid(m.courseId), title: m.title, type: m.type, material_date: m.date,
       meta_info: m.metaInfo, url: m.url, storage_path: storagePath, file_name: m.attachment?.fileName || null,
       file_size: m.attachment?.fileSize || null, file_type: m.attachment?.fileType || null,
     };
@@ -254,7 +258,7 @@ async function syncChanges(previous: PortalState, next: PortalState) {
   await changed(previous.submissions, next.submissions, async (s: any) => {
     const storagePath = s.attachment?.fileData?.startsWith('data:') ? await uploadAttachment('student-submissions', `${s.studentId}/${s.id}.pdf`, s.attachment) : s.attachment?.storagePath || null;
     return {
-      id: s.id, assignment_id: s.assignmentId || null, student_id: s.studentId, status: s.status,
+      id: s.id, assignment_id: databaseUuid(s.assignmentId), student_id: databaseUuid(s.studentId), status: s.status,
       submission_url: s.submissionUrl || null, submission_note: s.submissionNote || null,
       submitted_at: isoDate(s.submittedAt), grade: s.grade || null, teacher_feedback: s.teacherFeedback || null,
       storage_path: storagePath, file_name: s.attachment?.fileName || null, file_size: s.attachment?.fileSize || null,
@@ -262,7 +266,7 @@ async function syncChanges(previous: PortalState, next: PortalState) {
     };
   }, 'submissions');
   await changed(previous.activityLogs, next.activityLogs, (l: StudentActivityLog) => ({
-    id: l.id, student_id: l.studentId, action: l.action, details: l.details || null, created_at: isoDate(l.timestamp),
+    id: l.id, student_id: databaseUuid(l.studentId), action: l.action, details: l.details || null, created_at: isoDate(l.timestamp),
   }), 'activity_logs');
   if (previous.meetingUrl !== next.meetingUrl || !same(previous.liveHero, next.liveHero)) {
     const settingsPayload = {
@@ -348,7 +352,7 @@ export function usePortalStore() {
 
   const logActivity = useCallback((studentId: string, action: string, details?: string) => {
     if (!studentId) return;
-    const entry: StudentActivityLog = { id: id('log'), studentId, action, details, timestamp: new Date().toISOString() };
+    const entry: StudentActivityLog = { id: id(), studentId, action, details, timestamp: new Date().toISOString() };
     persistState((prev) => ({ ...prev, activityLogs: [entry, ...prev.activityLogs].slice(0, 300) }));
   }, [persistState]);
   const registerStudent = useCallback(async (data: { name: string; email: string; password: string; gradeLevel: string; requestNote?: string }) => {
@@ -407,11 +411,11 @@ export function usePortalStore() {
   }, []);
   const approveStudent = useCallback((studentId: string, enrolledCourseIds: string[] = []) => persistAndRefresh((prev) => ({
     ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, status: 'approved', enrolledCourseIds } : s),
-    activityLogs: [{ id: id('log'), studentId, action: 'Account approved by Teacher', details: `Enrolled in ${enrolledCourseIds.length} course batch(es)`, timestamp: new Date().toISOString() }, ...prev.activityLogs],
+    activityLogs: [{ id: id(), studentId, action: 'Account approved by Teacher', details: `Enrolled in ${enrolledCourseIds.length} course batch(es)`, timestamp: new Date().toISOString() }, ...prev.activityLogs],
   })), [persistAndRefresh]);
   const rejectStudent = useCallback((studentId: string) => persistAndRefresh((prev) => ({
     ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, status: 'rejected' } : s),
-    activityLogs: [{ id: id('log'), studentId, action: 'Registration declined', details: 'Reviewed by tutor', timestamp: new Date().toISOString() }, ...prev.activityLogs],
+    activityLogs: [{ id: id(), studentId, action: 'Registration declined', details: 'Reviewed by tutor', timestamp: new Date().toISOString() }, ...prev.activityLogs],
   })), [persistAndRefresh]);
   const changeStudentStatus = useCallback((studentId: string, status: StudentStatus) => persistAndRefresh((prev) => ({ ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, status } : s) })), [persistAndRefresh]);
   const addStudent = useCallback(async (studentData: Omit<Student, 'id' | 'createdAt'>, initialPassword: string) => {
@@ -446,7 +450,7 @@ export function usePortalStore() {
     const session = hero?.sessionId ? current.sessions.find((item) => item.id === hero.sessionId) : undefined;
     if (session && hero) {
       const sessionPayload = {
-        course_id: session.courseId, topic: session.topic, session_date: session.date, start_time: session.startTime,
+        course_id: databaseUuid(session.courseId), topic: session.topic, session_date: session.date, start_time: session.startTime,
         end_time: session.endTime, status: hero.status === 'live' ? 'Live' : session.status, meeting_url: nextHero?.meetingUrl || '',
       };
       const { data, error } = await writeWithOptionalColumns('class_sessions', sessionPayload, (candidate) => supabase.from('class_sessions').update(candidate).eq('id', session.id).select());
@@ -457,7 +461,7 @@ export function usePortalStore() {
     return refreshAfterTeacherSave('app_settings', settingsPayload, data, error);
   }, [refreshAfterTeacherSave]);
   const addCourse = useCallback(async (course: Omit<Course, 'id'>) => {
-    const courseId = id('course');
+    const courseId = id();
     const payload = {
       id: courseId, code: course.code, title: course.title, batch_name: course.batchName, instructor: course.instructor,
       accent_color: course.accentColor, description: course.description || null, schedule_cadence: course.scheduleCadence || null,
@@ -485,7 +489,7 @@ export function usePortalStore() {
   })), [persistAndRefresh]);
   const addSession = useCallback(async (session: Omit<ScheduleSession, 'id'>) => {
     const payload = {
-      id: id('session'), course_id: session.courseId, topic: session.topic, session_date: session.date,
+      id: id(), course_id: databaseUuid(session.courseId), topic: session.topic, session_date: session.date,
       start_time: session.startTime, end_time: session.endTime, status: session.status,
       meeting_url: normalizeExternalUrl(session.meetingUrl),
     };
@@ -497,7 +501,7 @@ export function usePortalStore() {
     if (!current) return false;
     const session = { ...current, ...updates };
     const payload = {
-      course_id: session.courseId, topic: session.topic, session_date: session.date, start_time: session.startTime,
+      course_id: databaseUuid(session.courseId), topic: session.topic, session_date: session.date, start_time: session.startTime,
       end_time: session.endTime, status: session.status, meeting_url: normalizeExternalUrl(session.meetingUrl),
     };
     const { data, error } = await writeWithOptionalColumns('class_sessions', payload, (candidate) => supabase.from('class_sessions').update(candidate).eq('id', sessionId).select());
@@ -505,10 +509,10 @@ export function usePortalStore() {
   }, [refreshAfterTeacherSave]);
   const deleteSession = useCallback((sessionId: string) => persistAndRefresh((prev) => ({ ...prev, sessions: prev.sessions.filter((s) => s.id !== sessionId) })), [persistAndRefresh]);
   const addAssignment = useCallback(async (assignment: Omit<Assignment, 'id'>) => {
-    const assignmentId = id('assignment');
+    const assignmentId = id();
     try {
       const payload = {
-        id: assignmentId, course_id: assignment.courseId, title: assignment.title, due_date: assignment.dueDate,
+        id: assignmentId, course_id: databaseUuid(assignment.courseId), title: assignment.title, due_date: assignment.dueDate,
         description: assignment.description, resource_url: normalizeExternalUrl(assignment.resourceUrl),
         resource_label: assignment.resourceLabel || null,
         attachment_path: await uploadAttachment('course-materials', `assignments/${assignmentId}/${assignment.attachment?.fileName || 'attachment'}`, assignment.attachment),
@@ -528,7 +532,7 @@ export function usePortalStore() {
     const assignment = { ...current, ...updates };
     try {
       const payload = {
-        course_id: assignment.courseId, title: assignment.title, due_date: assignment.dueDate,
+        course_id: databaseUuid(assignment.courseId), title: assignment.title, due_date: assignment.dueDate,
         description: assignment.description, resource_url: normalizeExternalUrl(assignment.resourceUrl),
         resource_label: assignment.resourceLabel || null,
         attachment_path: await uploadAttachment('course-materials', `assignments/${assignmentId}/${assignment.attachment?.fileName || 'attachment'}`, assignment.attachment),
@@ -545,20 +549,20 @@ export function usePortalStore() {
   const deleteAssignment = useCallback((assignmentId: string) => persistAndRefresh((prev) => ({ ...prev, assignments: prev.assignments.filter((a) => a.id !== assignmentId), submissions: prev.submissions.filter((s) => s.assignmentId !== assignmentId) })), [persistAndRefresh]);
   const submitAssignment = useCallback((assignmentId: string, studentId: string, submissionUrl: string, submissionNote: string, attachment?: UploadedFileMeta) => persistState((prev) => {
     const existing = prev.submissions.find((s) => s.assignmentId === assignmentId && s.studentId === studentId);
-    const next = { id: existing?.id || id('submission'), assignmentId, studentId, status: 'Submitted' as const, submissionUrl: normalizeExternalUrl(submissionUrl), submissionNote: submissionNote.trim(), submittedAt: new Date().toISOString(), attachment: attachment || existing?.attachment };
-    return { ...prev, submissions: [next, ...prev.submissions.filter((s) => s.id !== existing?.id)], activityLogs: [{ id: id('log'), studentId, action: 'Marked Assignment as Submitted', details: prev.assignments.find((a) => a.id === assignmentId)?.title || 'Coursework', timestamp: new Date().toISOString() }, ...prev.activityLogs] };
+    const next = { id: existing?.id || id(), assignmentId, studentId, status: 'Submitted' as const, submissionUrl: normalizeExternalUrl(submissionUrl), submissionNote: submissionNote.trim(), submittedAt: new Date().toISOString(), attachment: attachment || existing?.attachment };
+    return { ...prev, submissions: [next, ...prev.submissions.filter((s) => s.id !== existing?.id)], activityLogs: [{ id: id(), studentId, action: 'Marked Assignment as Submitted', details: prev.assignments.find((a) => a.id === assignmentId)?.title || 'Coursework', timestamp: new Date().toISOString() }, ...prev.activityLogs] };
   }), [persistState]);
   const retractSubmission = useCallback((assignmentId: string, studentId: string) => persistState((prev) => ({ ...prev, submissions: prev.submissions.filter((s) => !(s.assignmentId === assignmentId && s.studentId === studentId)) })), [persistState]);
   const gradeAssignment = useCallback((assignmentId: string, studentId: string, grade: string, teacherFeedback: string) => persistState((prev) => {
     const existing = prev.submissions.find((s) => s.assignmentId === assignmentId && s.studentId === studentId);
-    const next = { id: existing?.id || id('submission'), assignmentId, studentId, status: 'Graded' as const, ...existing, grade: grade.trim(), teacherFeedback: teacherFeedback.trim(), submittedAt: existing?.submittedAt || new Date().toISOString() };
-    return { ...prev, submissions: [next, ...prev.submissions.filter((s) => s.id !== existing?.id)], activityLogs: [{ id: id('log'), studentId, action: `Graded Assignment: ${prev.assignments.find((a) => a.id === assignmentId)?.title || 'Coursework'}`, details: `Score: ${grade.trim()}`, timestamp: new Date().toISOString() }, ...prev.activityLogs] };
+    const next = { id: existing?.id || id(), assignmentId, studentId, status: 'Graded' as const, ...existing, grade: grade.trim(), teacherFeedback: teacherFeedback.trim(), submittedAt: existing?.submittedAt || new Date().toISOString() };
+    return { ...prev, submissions: [next, ...prev.submissions.filter((s) => s.id !== existing?.id)], activityLogs: [{ id: id(), studentId, action: `Graded Assignment: ${prev.assignments.find((a) => a.id === assignmentId)?.title || 'Coursework'}`, details: `Score: ${grade.trim()}`, timestamp: new Date().toISOString() }, ...prev.activityLogs] };
   }), [persistState]);
   const addMaterial = useCallback(async (material: Omit<StudyMaterial, 'id'>) => {
-    const materialId = id('material');
+    const materialId = id();
     try {
       const payload = {
-        id: materialId, course_id: material.courseId, title: material.title, type: material.type,
+        id: materialId, course_id: databaseUuid(material.courseId), title: material.title, type: material.type,
         material_date: material.date, meta_info: material.metaInfo, url: normalizeExternalUrl(material.url),
         storage_path: await uploadAttachment('course-materials', `materials/${material.courseId}/${materialId}/${material.attachment?.fileName || 'attachment'}`, material.attachment),
         file_name: material.attachment?.fileName || null, file_size: material.attachment?.fileSize || null,
