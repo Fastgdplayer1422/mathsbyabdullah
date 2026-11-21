@@ -17,7 +17,6 @@ import {
   X,
   Shield,
   Smartphone,
-  Sparkles,
   UserPlus,
   Video,
 } from 'lucide-react';
@@ -144,12 +143,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       <section className="relative overflow-hidden border-b border-[#E7E5E4] bg-radial-[at_top_center] from-[#FFFFFF] via-[#F8F7F4] to-[#F3F1EC] px-4 pt-16 pb-20 sm:px-6 sm:pt-24 sm:pb-28 lg:pt-28 lg:pb-32">
         <div className="mx-auto max-w-[1240px]">
           <div className="mx-auto max-w-3xl text-center space-y-6">
-            {/* Qualification Pill */}
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#FED7AA] bg-[#FFF7ED] px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-[#C2410C] shadow-xs">
-              <Sparkles className="h-3.5 w-3.5 text-[#F97316]" aria-hidden="true" />
-              <span>Cambridge &amp; Edexcel · IGCSE · GCSE · AS &amp; A-Level</span>
-            </div>
-
             {/* Main Headline */}
             <h1 className="font-display text-4xl font-extrabold tracking-tight text-[#18181B] sm:text-5xl lg:text-6xl sm:leading-[1.12] text-balance">
               Focused Mathematics Tutoring. <br />
