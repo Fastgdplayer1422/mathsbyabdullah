@@ -14,7 +14,7 @@ import { TeacherAdmin } from './components/teacher/TeacherAdmin';
 import { usePortalStore } from './hooks/usePortalStore';
 import { StudentTab, TeacherTab, UserSession } from './types/portal';
 import { supabase } from './lib/supabase';
-import { selectWithOptionalColumns, writeWithOptionalColumns } from './lib/supabase-schema';
+import { selectWithOptionalColumns } from './lib/supabase-schema';
 
 export default function App() {
   const {
@@ -82,16 +82,6 @@ export default function App() {
   const loadAuthenticatedRole = useCallback(async (userId: string, email?: string | null) => {
     if (email?.trim().toLowerCase() === 'aa6993248@gmail.com') {
       setSession({ role: 'teacher' });
-      const teacherProfile = { id: userId, email, role: 'teacher', status: 'approved' };
-      const { error: profileError } = await writeWithOptionalColumns('profiles', teacherProfile, (candidate) =>
-        supabase.from('profiles').upsert(candidate, { onConflict: 'id' }),
-      );
-      if (profileError) {
-        setSession(null);
-        notify('Teacher profile could not be loaded. Please try signing in again.');
-        if (import.meta.env.DEV) console.error('[auth] Teacher profile upsert failed', { code: profileError.code });
-        return;
-      }
       return;
     }
 
@@ -159,16 +149,6 @@ export default function App() {
     const userEmail = data.user.email?.trim().toLowerCase();
     if (expectedRole === 'teacher' && userEmail === 'aa6993248@gmail.com') {
       setSession({ role: 'teacher' });
-      const teacherProfile = { id: data.user.id, email: data.user.email, role: 'teacher', status: 'approved' };
-      const { error: profileError } = await writeWithOptionalColumns('profiles', teacherProfile, (candidate) =>
-        supabase.from('profiles').upsert(candidate, { onConflict: 'id' }),
-      );
-      if (profileError) {
-        setSession(null);
-        await supabase.auth.signOut();
-        if (import.meta.env.DEV) console.error('[auth] Teacher profile upsert failed', { code: profileError.code });
-        return { error: 'Teacher profile could not be saved. Please try again.' };
-      }
       setAuthLoading(false);
       notify('Welcome Abdullah. Teacher Admin active.');
       return {};
