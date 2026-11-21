@@ -93,11 +93,11 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
 
   // Split students into Pending and Approved/Others
   const pendingStudents = useMemo(() => {
-    return state.students.filter((s) => s.status === 'pending');
+    return state.students.filter((student) => student.status.trim().toLowerCase() === 'pending');
   }, [state.students]);
 
   const activeStudents = useMemo(() => {
-    return state.students.filter((s) => s.status !== 'pending');
+    return state.students.filter((student) => student.status.trim().toLowerCase() !== 'pending');
   }, [state.students]);
 
   const filteredActiveStudents = useMemo(() => {

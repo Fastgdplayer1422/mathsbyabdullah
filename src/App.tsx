@@ -20,6 +20,7 @@ export default function App() {
     state,
     loading: portalLoading,
     loadError,
+    refreshPortalData,
     logActivity,
     saveMeetingLink,
     registerStudent,
@@ -61,6 +62,15 @@ export default function App() {
     setToastMessage(message);
   }, []);
 
+  const handleTeacherTabChange = useCallback((tab: TeacherTab) => {
+    setTeacherTab(tab);
+    if (tab === 'students-enrollments') void refreshPortalData();
+  }, [refreshPortalData]);
+
+  useEffect(() => {
+    if (session?.role === 'teacher') void refreshPortalData();
+  }, [session?.role, refreshPortalData]);
+
   useEffect(() => {
     if (!toastMessage) return;
     const timer = window.setTimeout(() => setToastMessage(null), 3500);
@@ -89,7 +99,7 @@ export default function App() {
       setSession(null);
       return;
     }
-    setSession(profile.role === 'teacher' ? { role: 'teacher' } : { role: 'student', studentId: profile.id });
+    setSession(profile.role?.trim().toLowerCase() === 'teacher' ? { role: 'teacher' } : { role: 'student', studentId: profile.id });
   }, []);
 
   useEffect(() => {
@@ -161,7 +171,7 @@ export default function App() {
 
     const { data: profile, error: profileError } = await supabase.from('profiles')
       .select('id,role,status,full_name').eq('id', data.user.id).maybeSingle();
-    if (profileError || !profile || profile.role !== expectedRole) {
+    if (profileError || !profile || profile.role?.trim().toLowerCase() !== expectedRole) {
       await supabase.auth.signOut();
       if (profileError && import.meta.env.DEV) {
         console.error('[auth] Profile lookup failed', { code: profileError.code,  });
@@ -171,7 +181,7 @@ export default function App() {
     setSession(expectedRole === 'teacher' ? { role: 'teacher' } : { role: 'student', studentId: profile.id });
     setAuthLoading(false);
     if (expectedRole === 'student') {
-      if (profile.status === 'approved') {
+      if (profile.status?.trim().toLowerCase() === 'approved') {
         logActivity(profile.id, 'Logged In', 'Student session started');
         notify(`Welcome back, ${profile.full_name.split(' ')[0]}!`);
       } else {
@@ -194,14 +204,14 @@ export default function App() {
 
   // Pending approval requests counter for teacher top bar
   const pendingRequestsCount = useMemo(() => {
-    return state.students.filter((s) => s.status === 'pending').length;
+    return state.students.filter((student) => student.status.trim().toLowerCase() === 'pending').length;
   }, [state.students]);
 
   // Log dashboard view for approved student
   useEffect(() => {
     if (
       session?.role === 'student' &&
-      activeStudent?.status === 'approved' &&
+      activeStudent?.status.trim().toLowerCase() === 'approved' &&
       studentTab === 'dashboard'
     ) {
       logActivity(activeStudent.id, 'Viewed Dashboard', 'Overview page opened');
@@ -210,9 +220,10 @@ export default function App() {
 
   const handleRefreshStudentApproval = useCallback(() => {
     if (!activeStudent) return;
-    if (activeStudent.status === 'approved') {
+    const status = activeStudent.status.trim().toLowerCase();
+    if (status === 'approved') {
       notify('Congratulations! Your account has been approved.');
-    } else if (activeStudent.status === 'pending') {
+    } else if (status === 'pending') {
       notify('Still awaiting teacher verification. Please check back shortly.');
     } else {
       notify('Your registration was not approved.');
@@ -362,7 +373,7 @@ export default function App() {
       <TopNav
         role="teacher"
         teacherTab={teacherTab}
-        onTeacherTabChange={setTeacherTab}
+        onTeacherTabChange={handleTeacherTabChange}
         pendingRequestsCount={pendingRequestsCount}
         onSignOut={handleSignOut}
       />
@@ -376,7 +387,7 @@ export default function App() {
         <TeacherAdmin
           state={state}
           activeTab={teacherTab}
-          onTabChange={setTeacherTab}
+          onTabChange={handleTeacherTabChange}
           onSaveMeetingLink={saveMeetingLink}
           onPublishHero={publishLiveHero}
           onAddCourse={addCourse}
@@ -410,7 +421,7 @@ export default function App() {
             {pendingRequestsCount > 0 && (
               <button
                 type="button"
-                onClick={() => setTeacherTab('students-enrollments')}
+                onClick={() => handleTeacherTabChange('students-enrollments')}
                 className="font-semibold text-[#EA580C] hover:underline"
               >
                 {pendingRequestsCount} pending approval request(s)

@@ -27,45 +27,76 @@ async function uploadAttachment(bucket: string, path: string, attachment?: Uploa
 
 async function signedAttachment(bucket: string, path: string | null, fileName: string | null, fileSize: number | null, fileType: string | null) {
   if (!path) return undefined;
-  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 30);
-  if (error) return undefined;
-  return { fileName: fileName || 'download', fileSize: fileSize || 0, fileType: fileType || 'application/octet-stream', fileData: data.signedUrl, storagePath: path };
+  try {
+    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 30);
+    if (error) return undefined;
+    return { fileName: fileName || 'download', fileSize: fileSize || 0, fileType: fileType || 'application/octet-stream', fileData: data.signedUrl, storagePath: path };
+  } catch {
+    return undefined;
+  }
 }
 
-async function loadPortalState(): Promise<PortalState> {
-  const { data: authData } = await supabase.auth.getUser();
-  const user = authData.user;
-  const [profiles, courses, enrollments, settings, sessions, assignments, materials, submissions, logs] = await Promise.all([
-    user ? supabase.from('profiles').select('id,full_name,email,role,status,grade_level,notes,request_note,created_at').eq('role', 'student') : Promise.resolve({ data: [], error: null }),
-    supabase.from('courses').select('*'),
-    user ? supabase.from('enrollments').select('student_id,course_id') : Promise.resolve({ data: [], error: null }),
-    user ? supabase.from('app_settings').select('meeting_link,live_hero').eq('id', 1).maybeSingle() : Promise.resolve({ data: null, error: null }),
-    user ? supabase.from('class_sessions').select('*') : Promise.resolve({ data: [], error: null }),
-    user ? supabase.from('assignments').select('*') : Promise.resolve({ data: [], error: null }),
-    user ? supabase.from('materials').select('*') : Promise.resolve({ data: [], error: null }),
-    user ? supabase.from('submissions').select('*') : Promise.resolve({ data: [], error: null }),
-    user ? supabase.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(300) : Promise.resolve({ data: [], error: null }),
-  ]);
-  if (profiles.error) {
-    console.error('[portal] Failed to load student profiles', {
-      code: profiles.error.code,
-      message: profiles.error.message,
-    });
-    throw profiles.error;
+function getPortalErrorMessage(error: unknown) {
+  const errorRecord = error && typeof error === 'object' ? error as { message?: unknown; code?: unknown } : undefined;
+  const message = typeof errorRecord?.message === 'string' && errorRecord.message.trim()
+    ? errorRecord.message
+    : String(error || 'Unknown error');
+  const code = typeof errorRecord?.code === 'string' && errorRecord.code.trim() ? ` (code: ${errorRecord.code})` : '';
+  return `${message}${code}`;
+}
+
+async function loadQuery(label: string, query: PromiseLike<any>, fallback: any) {
+  try {
+    const { data, error } = await query;
+    return {
+      data: error ? fallback : data ?? fallback,
+      error: error ? `${label}: ${getPortalErrorMessage(error)}` : undefined,
+    };
+  } catch (error) {
+    return { data: fallback, error: `${label}: ${getPortalErrorMessage(error)}` };
   }
-  const failures = [courses, enrollments, settings, sessions, assignments, materials, submissions, logs].filter((result) => result.error);
-  if (failures.length) throw failures[0].error;
+}
+
+const normalizeValue = (value: unknown) => typeof value === 'string' ? value.trim().toLowerCase() : '';
+
+async function loadPortalState(): Promise<{ state: PortalState; errors: string[] }> {
+  let authenticated = false;
+  const errors: string[] = [];
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) errors.push(`auth: ${getPortalErrorMessage(error)}`);
+    authenticated = Boolean(data.user);
+  } catch (error) {
+    errors.push(`auth: ${getPortalErrorMessage(error)}`);
+  }
+
+  const [profiles, courses, enrollments, settings, sessions, assignments, materials, submissions, logs] = await Promise.all([
+    authenticated ? loadQuery('profiles', supabase.from('profiles').select('id,full_name,email,role,status,grade_level,notes,request_note,created_at'), []) : Promise.resolve({ data: [], error: undefined }),
+    loadQuery('courses', supabase.from('courses').select('*'), []),
+    authenticated ? loadQuery('enrollments', supabase.from('enrollments').select('student_id,course_id'), []) : Promise.resolve({ data: [], error: undefined }),
+    authenticated ? loadQuery('app_settings', supabase.from('app_settings').select('meeting_link,live_hero').eq('id', 1).maybeSingle(), null) : Promise.resolve({ data: null, error: undefined }),
+    authenticated ? loadQuery('class_sessions', supabase.from('class_sessions').select('*'), []) : Promise.resolve({ data: [], error: undefined }),
+    authenticated ? loadQuery('assignments', supabase.from('assignments').select('*'), []) : Promise.resolve({ data: [], error: undefined }),
+    authenticated ? loadQuery('materials', supabase.from('materials').select('*'), []) : Promise.resolve({ data: [], error: undefined }),
+    authenticated ? loadQuery('submissions', supabase.from('submissions').select('*'), []) : Promise.resolve({ data: [], error: undefined }),
+    authenticated ? loadQuery('activity_logs', supabase.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(300), []) : Promise.resolve({ data: [], error: undefined }),
+  ]);
+
+  for (const result of [profiles, courses, enrollments, settings, sessions, assignments, materials, submissions, logs]) {
+    if (result.error) errors.push(result.error);
+  }
+
   const enrollmentRows = enrollments.data || [];
-  const students: Student[] = (profiles.data || []).filter((row: any) => row.role === 'student').map((row: any) => ({
+  const students: Student[] = (profiles.data || []).filter((row: any) => normalizeValue(row.role) === 'student').map((row: any) => ({
     id: row.id,
-    name: row.full_name,
-    email: row.email,
-    status: row.status,
+    name: row.full_name || '',
+    email: row.email || '',
+    status: (['approved', 'rejected'].includes(normalizeValue(row.status)) ? normalizeValue(row.status) : 'pending') as StudentStatus,
     gradeLevel: row.grade_level || '',
     notes: row.notes || undefined,
     requestNote: row.request_note || undefined,
     enrolledCourseIds: enrollmentRows.filter((entry: any) => entry.student_id === row.id).map((entry: any) => entry.course_id),
-    createdAt: row.created_at,
+    createdAt: row.created_at || new Date().toISOString(),
   }));
   const mappedCourses: Course[] = (courses.data || []).map((row: any) => ({
     id: row.id, code: row.code, title: row.title, batchName: row.batch_name, instructor: row.instructor,
@@ -93,17 +124,20 @@ async function loadPortalState(): Promise<PortalState> {
     attachment: await signedAttachment('student-submissions', row.storage_path, row.file_name, row.file_size, row.file_type),
   })));
   return {
-    ...EMPTY_PORTAL_DATA,
-    teacherAccount: DEFAULT_TEACHER_CREDENTIALS,
-    meetingUrl: settings.data?.meeting_link || '',
-    liveHero: settings.data?.live_hero || null,
-    courses: mappedCourses,
-    students,
-    sessions: sortSessions(mappedSessions),
-    assignments: mappedAssignments,
-    materials: mappedMaterials,
-    submissions: mappedSubmissions,
-    activityLogs: (logs.data || []).map((row: any) => ({ id: row.id, studentId: row.student_id, action: row.action, details: row.details || undefined, timestamp: row.created_at })),
+    state: {
+      ...EMPTY_PORTAL_DATA,
+      teacherAccount: DEFAULT_TEACHER_CREDENTIALS,
+      meetingUrl: settings.data?.meeting_link || '',
+      liveHero: settings.data?.live_hero || null,
+      courses: mappedCourses,
+      students,
+      sessions: sortSessions(mappedSessions),
+      assignments: mappedAssignments,
+      materials: mappedMaterials,
+      submissions: mappedSubmissions,
+      activityLogs: (logs.data || []).map((row: any) => ({ id: row.id, studentId: row.student_id, action: row.action, details: row.details || undefined, timestamp: row.created_at })),
+    },
+    errors,
   };
 }
 
@@ -195,40 +229,51 @@ export function usePortalStore() {
   const stateRef = useRef(state);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const refreshSequence = useRef(0);
+  const refreshPortalData = useCallback(async () => {
+    const requestId = ++refreshSequence.current;
+    setLoading(true);
+    try {
+      const { state: next, errors } = await loadPortalState();
+      if (requestId !== refreshSequence.current) return;
+      stateRef.current = next;
+      setState(next);
+      setLoadError(errors.length ? errors.join(' · ') : null);
+    } catch (error) {
+      if (requestId === refreshSequence.current) setLoadError(`portal data: ${getPortalErrorMessage(error)}`);
+    } finally {
+      if (requestId === refreshSequence.current) setLoading(false);
+    }
+  }, []);
   const persistState = useCallback((updater: (prev: PortalState) => PortalState) => {
     const previous = stateRef.current;
     const next = updater(previous);
     stateRef.current = next;
     setState(next);
-    void syncChanges(previous, next).catch((error) => setLoadError(error instanceof Error ? error.message : 'Could not save changes.'));
+    void syncChanges(previous, next).catch((error) => setLoadError(`save changes: ${getPortalErrorMessage(error)}`));
   }, []);
+  const persistAndRefresh = useCallback(async (updater: (prev: PortalState) => PortalState) => {
+    const previous = stateRef.current;
+    const next = updater(previous);
+    stateRef.current = next;
+    setState(next);
+    let saveError: string | null = null;
+    try {
+      await syncChanges(previous, next);
+    } catch (error) {
+      saveError = `save changes: ${getPortalErrorMessage(error)}`;
+    }
+    await refreshPortalData();
+    if (saveError) setLoadError((current) => [current, saveError].filter(Boolean).join(' · '));
+  }, [refreshPortalData]);
 
   useEffect(() => {
-    let active = true;
-    const refresh = async () => {
-      if (active) setLoading(true);
-      try {
-        const next = await loadPortalState();
-        if (active) {
-          stateRef.current = next;
-          setState(next);
-          setLoadError(null);
-        }
-      } catch (error) {
-        if (active) setLoadError(error instanceof Error ? error.message : 'Could not load portal data.');
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
     const { data: listener } = supabase.auth.onAuthStateChange(() => {
-      window.setTimeout(() => void refresh(), 0);
+      window.setTimeout(() => void refreshPortalData(), 0);
     });
-    void refresh();
-    return () => {
-      active = false;
-      listener.subscription.unsubscribe();
-    };
-  }, []);
+    void refreshPortalData();
+    return () => listener.subscription.unsubscribe();
+  }, [refreshPortalData]);
 
   const logActivity = useCallback((studentId: string, action: string, details?: string) => {
     if (!studentId) return;
@@ -289,15 +334,15 @@ export function usePortalStore() {
       return { success: false, error: 'Registration could not be completed. Please try again or contact the teacher.' };
     }
   }, []);
-  const approveStudent = useCallback((studentId: string, enrolledCourseIds: string[] = []) => persistState((prev) => ({
+  const approveStudent = useCallback((studentId: string, enrolledCourseIds: string[] = []) => persistAndRefresh((prev) => ({
     ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, status: 'approved', enrolledCourseIds } : s),
     activityLogs: [{ id: id('log'), studentId, action: 'Account approved by Teacher', details: `Enrolled in ${enrolledCourseIds.length} course batch(es)`, timestamp: new Date().toISOString() }, ...prev.activityLogs],
-  })), [persistState]);
-  const rejectStudent = useCallback((studentId: string) => persistState((prev) => ({
+  })), [persistAndRefresh]);
+  const rejectStudent = useCallback((studentId: string) => persistAndRefresh((prev) => ({
     ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, status: 'rejected' } : s),
     activityLogs: [{ id: id('log'), studentId, action: 'Registration declined', details: 'Reviewed by tutor', timestamp: new Date().toISOString() }, ...prev.activityLogs],
-  })), [persistState]);
-  const changeStudentStatus = useCallback((studentId: string, status: StudentStatus) => persistState((prev) => ({ ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, status } : s) })), [persistState]);
+  })), [persistAndRefresh]);
+  const changeStudentStatus = useCallback((studentId: string, status: StudentStatus) => persistAndRefresh((prev) => ({ ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, status } : s) })), [persistAndRefresh]);
   const addStudent = useCallback(async (studentData: Omit<Student, 'id' | 'createdAt'>, initialPassword: string) => {
     const authClient = createIsolatedAuthClient();
     const { data, error } = await authClient.auth.signUp({
@@ -321,9 +366,9 @@ export function usePortalStore() {
   }, []);
   const updateStudent = useCallback((studentId: string, updates: Partial<Omit<Student, 'id' | 'createdAt'>>) => persistState((prev) => ({ ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, ...updates } : s) })), [persistState]);
   const deleteStudent = useCallback((studentId: string) => persistState((prev) => ({ ...prev, students: prev.students.filter((s) => s.id !== studentId), activityLogs: prev.activityLogs.filter((l) => l.studentId !== studentId), submissions: prev.submissions.filter((s) => s.studentId !== studentId) })), [persistState]);
-  const toggleStudentEnrollment = useCallback((studentId: string, courseId: string) => persistState((prev) => ({
+  const toggleStudentEnrollment = useCallback((studentId: string, courseId: string) => persistAndRefresh((prev) => ({
     ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, enrolledCourseIds: s.enrolledCourseIds.includes(courseId) ? s.enrolledCourseIds.filter((id) => id !== courseId) : [...s.enrolledCourseIds, courseId] } : s),
-  })), [persistState]);
+  })), [persistAndRefresh]);
   const publishLiveHero = useCallback((hero: Omit<LiveSessionHero, 'updatedAt'> | null) => persistState((prev) => ({
     ...prev, liveHero: hero ? { ...hero, meetingUrl: normalizeExternalUrl(hero.meetingUrl), updatedAt: new Date().toISOString() } : null,
     sessions: hero?.sessionId ? prev.sessions.map((session) => session.id === hero.sessionId ? { ...session, meetingUrl: normalizeExternalUrl(hero.meetingUrl), status: hero.status === 'live' ? 'Live' : session.status } : session) : prev.sessions,
@@ -365,5 +410,5 @@ export function usePortalStore() {
   const saveMeetingLink = useCallback((rawUrl: string) => persistState((prev) => ({ ...prev, meetingUrl: normalizeExternalUrl(rawUrl), liveHero: prev.liveHero ? { ...prev.liveHero, meetingUrl: normalizeExternalUrl(rawUrl) } : null })), [persistState]);
   const resetAllData = useCallback(() => persistState(() => EMPTY_PORTAL_DATA), [persistState]);
 
-  return { state, loading, loadError, logActivity, registerStudent, approveStudent, rejectStudent, changeStudentStatus, addStudent, updateStudent, deleteStudent, toggleStudentEnrollment, publishLiveHero, addCourse, updateCourse, deleteCourse, addSession, updateSession, deleteSession, addAssignment, updateAssignment, deleteAssignment, submitAssignment, retractSubmission, gradeAssignment, addMaterial, deleteMaterial, saveMeetingLink, resetAllData };
+  return { state, loading, loadError, refreshPortalData, logActivity, registerStudent, approveStudent, rejectStudent, changeStudentStatus, addStudent, updateStudent, deleteStudent, toggleStudentEnrollment, publishLiveHero, addCourse, updateCourse, deleteCourse, addSession, updateSession, deleteSession, addAssignment, updateAssignment, deleteAssignment, submitAssignment, retractSubmission, gradeAssignment, addMaterial, deleteMaterial, saveMeetingLink, resetAllData };
 }

@@ -90,7 +90,7 @@ export const TeacherAdmin: React.FC<TeacherAdminProps> = ({
   const [confirmWipe, setConfirmWipe] = useState(false);
 
   const pendingCount = useMemo(
-    () => state.students.filter((s) => s.status === 'pending').length,
+    () => state.students.filter((student) => student.status.trim().toLowerCase() === 'pending').length,
     [state.students]
   );
 
