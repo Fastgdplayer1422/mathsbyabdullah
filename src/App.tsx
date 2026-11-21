@@ -20,6 +20,7 @@ export default function App() {
     state,
     loading: portalLoading,
     loadError,
+    profileDebug,
     refreshPortalData,
     logActivity,
     saveMeetingLink,
@@ -386,6 +387,7 @@ export default function App() {
         )}
         <TeacherAdmin
           state={state}
+          profileDebug={profileDebug}
           activeTab={teacherTab}
           onTabChange={handleTeacherTabChange}
           onSaveMeetingLink={saveMeetingLink}

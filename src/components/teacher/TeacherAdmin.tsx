@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import type { ProfileQueryDebug } from '../../hooks/usePortalStore';
 import {
   BookOpen,
   Calendar,
@@ -27,6 +28,7 @@ import { StudentsManager } from './StudentsManager';
 
 interface TeacherAdminProps {
   state: PortalState;
+  profileDebug: ProfileQueryDebug;
   activeTab: TeacherTab;
   onTabChange: (tab: TeacherTab) => void;
   onSaveMeetingLink: (url: string) => void;
@@ -61,6 +63,7 @@ interface TeacherAdminProps {
 
 export const TeacherAdmin: React.FC<TeacherAdminProps> = ({
   state,
+  profileDebug,
   activeTab,
   onTabChange,
   onSaveMeetingLink,
@@ -308,6 +311,7 @@ export const TeacherAdmin: React.FC<TeacherAdminProps> = ({
       {activeTab === 'students-enrollments' && (
         <StudentsManager
           state={state}
+          profileDebug={profileDebug}
           onApproveStudent={onApproveStudent}
           onRejectStudent={onRejectStudent}
           onChangeStudentStatus={onChangeStudentStatus}

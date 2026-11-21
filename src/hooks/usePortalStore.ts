@@ -59,7 +59,53 @@ async function loadQuery(label: string, query: PromiseLike<any>, fallback: any) 
 
 const normalizeValue = (value: unknown) => typeof value === 'string' ? value.trim().toLowerCase() : '';
 
-async function loadPortalState(): Promise<{ state: PortalState; errors: string[] }> {
+export interface ProfileQueryDebug {
+  rowCount: number | null;
+  sample: Array<{ role: unknown; status: unknown }>;
+  errors: Array<{ message: string; code: string | null; details: string | null }>;
+}
+
+async function loadProfilesQuery() {
+  const projections = [
+    'id,full_name,email,role,status,grade_level,notes,request_note,created_at',
+    'id,full_name,email,role,status',
+  ];
+  const queryErrors: ProfileQueryDebug['errors'] = [];
+
+  for (const projection of projections) {
+    try {
+      const { data, error } = await supabase.from('profiles').select(projection);
+      if (!error) {
+        const rows = data ?? [];
+        return {
+          data: rows,
+          error: undefined,
+          debug: {
+            rowCount: rows.length,
+            sample: rows.slice(0, 3).map((row: any) => ({ role: row.role ?? null, status: row.status ?? null })),
+            errors: queryErrors,
+          } satisfies ProfileQueryDebug,
+        };
+      }
+      queryErrors.push({ message: error.message, code: error.code ?? null, details: error.details ?? null });
+    } catch (error) {
+      const record = error && typeof error === 'object' ? error as { message?: unknown; code?: unknown; details?: unknown } : undefined;
+      queryErrors.push({
+        message: typeof record?.message === 'string' ? record.message : String(error || 'Unknown error'),
+        code: typeof record?.code === 'string' ? record.code : null,
+        details: typeof record?.details === 'string' ? record.details : null,
+      });
+    }
+  }
+
+  return {
+    data: [],
+    error: `profiles: ${queryErrors.map((error) => `${error.message}${error.code ? ` (code: ${error.code})` : ''}`).join(' · ')}`,
+    debug: { rowCount: null, sample: [], errors: queryErrors } satisfies ProfileQueryDebug,
+  };
+}
+
+async function loadPortalState(): Promise<{ state: PortalState; errors: string[]; profileDebug: ProfileQueryDebug }> {
   let authenticated = false;
   const errors: string[] = [];
   try {
@@ -71,7 +117,7 @@ async function loadPortalState(): Promise<{ state: PortalState; errors: string[]
   }
 
   const [profiles, courses, enrollments, settings, sessions, assignments, materials, submissions, logs] = await Promise.all([
-    authenticated ? loadQuery('profiles', supabase.from('profiles').select('id,full_name,email,role,status,grade_level,notes,request_note,created_at'), []) : Promise.resolve({ data: [], error: undefined }),
+    authenticated ? loadProfilesQuery() : Promise.resolve({ data: [], error: undefined, debug: { rowCount: null, sample: [], errors: [] } satisfies ProfileQueryDebug }),
     loadQuery('courses', supabase.from('courses').select('*'), []),
     authenticated ? loadQuery('enrollments', supabase.from('enrollments').select('student_id,course_id'), []) : Promise.resolve({ data: [], error: undefined }),
     authenticated ? loadQuery('app_settings', supabase.from('app_settings').select('meeting_link,live_hero').eq('id', 1).maybeSingle(), null) : Promise.resolve({ data: null, error: undefined }),
@@ -138,6 +184,7 @@ async function loadPortalState(): Promise<{ state: PortalState; errors: string[]
       activityLogs: (logs.data || []).map((row: any) => ({ id: row.id, studentId: row.student_id, action: row.action, details: row.details || undefined, timestamp: row.created_at })),
     },
     errors,
+    profileDebug: profiles.debug,
   };
 }
 
@@ -228,16 +275,18 @@ export function usePortalStore() {
   const [state, setState] = useState<PortalState>(EMPTY_PORTAL_DATA);
   const stateRef = useRef(state);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [profileDebug, setProfileDebug] = useState<ProfileQueryDebug>({ rowCount: null, sample: [], errors: [] });
   const [loading, setLoading] = useState(true);
   const refreshSequence = useRef(0);
   const refreshPortalData = useCallback(async () => {
     const requestId = ++refreshSequence.current;
     setLoading(true);
     try {
-      const { state: next, errors } = await loadPortalState();
+      const { state: next, errors, profileDebug: nextProfileDebug } = await loadPortalState();
       if (requestId !== refreshSequence.current) return;
       stateRef.current = next;
       setState(next);
+      setProfileDebug(nextProfileDebug);
       setLoadError(errors.length ? errors.join(' · ') : null);
     } catch (error) {
       if (requestId === refreshSequence.current) setLoadError(`portal data: ${getPortalErrorMessage(error)}`);
@@ -410,5 +459,5 @@ export function usePortalStore() {
   const saveMeetingLink = useCallback((rawUrl: string) => persistState((prev) => ({ ...prev, meetingUrl: normalizeExternalUrl(rawUrl), liveHero: prev.liveHero ? { ...prev.liveHero, meetingUrl: normalizeExternalUrl(rawUrl) } : null })), [persistState]);
   const resetAllData = useCallback(() => persistState(() => EMPTY_PORTAL_DATA), [persistState]);
 
-  return { state, loading, loadError, refreshPortalData, logActivity, registerStudent, approveStudent, rejectStudent, changeStudentStatus, addStudent, updateStudent, deleteStudent, toggleStudentEnrollment, publishLiveHero, addCourse, updateCourse, deleteCourse, addSession, updateSession, deleteSession, addAssignment, updateAssignment, deleteAssignment, submitAssignment, retractSubmission, gradeAssignment, addMaterial, deleteMaterial, saveMeetingLink, resetAllData };
+  return { state, loading, loadError, profileDebug, refreshPortalData, logActivity, registerStudent, approveStudent, rejectStudent, changeStudentStatus, addStudent, updateStudent, deleteStudent, toggleStudentEnrollment, publishLiveHero, addCourse, updateCourse, deleteCourse, addSession, updateSession, deleteSession, addAssignment, updateAssignment, deleteAssignment, submitAssignment, retractSubmission, gradeAssignment, addMaterial, deleteMaterial, saveMeetingLink, resetAllData };
 }
