@@ -315,6 +315,25 @@ export function usePortalStore() {
     await refreshPortalData();
     if (saveError) setLoadError((current) => [current, saveError].filter(Boolean).join(' · '));
   }, [refreshPortalData]);
+  const reportTeacherSaveFailure = useCallback((table: string, payload: unknown, error: unknown) => {
+    const details = error && typeof error === 'object' ? error as { code?: unknown; message?: unknown } : undefined;
+    const code = typeof details?.code === 'string' && details.code ? details.code : 'UNKNOWN';
+    const message = typeof details?.message === 'string' && details.message ? details.message : String(error || 'Unknown error');
+    console.error(`[Supabase] ${table} save failed`, { payload, error });
+    setLoadError(`${table} save failed (${code}): ${message}`);
+  }, []);
+  const refreshAfterTeacherSave = useCallback(async (table: string, payload: unknown, data: unknown[] | null, error: unknown) => {
+    if (error) {
+      reportTeacherSaveFailure(table, payload, error);
+      return false;
+    }
+    if (!data?.length) {
+      reportTeacherSaveFailure(table, payload, { code: 'NO_ROWS_RETURNED', message: 'Supabase returned no saved rows.' });
+      return false;
+    }
+    await refreshPortalData();
+    return true;
+  }, [refreshPortalData, reportTeacherSaveFailure]);
 
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange(() => {
@@ -418,28 +437,108 @@ export function usePortalStore() {
   const toggleStudentEnrollment = useCallback((studentId: string, courseId: string) => persistAndRefresh((prev) => ({
     ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, enrolledCourseIds: s.enrolledCourseIds.includes(courseId) ? s.enrolledCourseIds.filter((id) => id !== courseId) : [...s.enrolledCourseIds, courseId] } : s),
   })), [persistAndRefresh]);
-  const publishLiveHero = useCallback((hero: Omit<LiveSessionHero, 'updatedAt'> | null) => persistAndRefresh((prev) => ({
-    ...prev, liveHero: hero ? { ...hero, meetingUrl: normalizeExternalUrl(hero.meetingUrl), updatedAt: new Date().toISOString() } : null,
-    sessions: hero?.sessionId ? prev.sessions.map((session) => session.id === hero.sessionId ? { ...session, meetingUrl: normalizeExternalUrl(hero.meetingUrl), status: hero.status === 'live' ? 'Live' : session.status } : session) : prev.sessions,
-  })), [persistAndRefresh]);
-  const addCourse = useCallback((course: Omit<Course, 'id'>) => {
-    const next = { ...course, id: id('course') }; void persistAndRefresh((prev) => ({ ...prev, courses: [...prev.courses, next] })); return next;
-  }, [persistAndRefresh]);
-  const updateCourse = useCallback((courseId: string, updates: Partial<Omit<Course, 'id'>>) => persistAndRefresh((prev) => ({ ...prev, courses: prev.courses.map((c) => c.id === courseId ? { ...c, ...updates } : c) })), [persistAndRefresh]);
+  const publishLiveHero = useCallback(async (hero: Omit<LiveSessionHero, 'updatedAt'> | null) => {
+    const current = stateRef.current;
+    const nextHero = hero ? { ...hero, meetingUrl: normalizeExternalUrl(hero.meetingUrl), updatedAt: new Date().toISOString() } : null;
+    const session = hero?.sessionId ? current.sessions.find((item) => item.id === hero.sessionId) : undefined;
+    if (session && hero) {
+      const sessionPayload = {
+        course_id: session.courseId, topic: session.topic, session_date: session.date, start_time: session.startTime,
+        end_time: session.endTime, status: hero.status === 'live' ? 'Live' : session.status, meeting_url: nextHero?.meetingUrl || '',
+      };
+      const { data, error } = await supabase.from('class_sessions').update(sessionPayload).eq('id', session.id).select();
+      if (!(await refreshAfterTeacherSave('class_sessions', { id: session.id, ...sessionPayload }, data, error))) return false;
+    }
+    const settingsPayload = { id: 1, meeting_link: current.meetingUrl, live_hero: nextHero, updated_at: new Date().toISOString() };
+    const { data, error } = await supabase.from('app_settings').upsert([settingsPayload]).select();
+    return refreshAfterTeacherSave('app_settings', settingsPayload, data, error);
+  }, [refreshAfterTeacherSave]);
+  const addCourse = useCallback(async (course: Omit<Course, 'id'>) => {
+    const courseId = id('course');
+    const payload = {
+      id: courseId, code: course.code, title: course.title, batch_name: course.batchName, instructor: course.instructor,
+      accent_color: course.accentColor, description: course.description || null, schedule_cadence: course.scheduleCadence || null,
+      classes_per_week: course.classesPerWeek || null, weekly_slots: course.weeklySlots || [],
+    };
+    const { data, error } = await supabase.from('courses').insert([payload]).select();
+    return refreshAfterTeacherSave('courses', payload, data, error);
+  }, [refreshAfterTeacherSave]);
+  const updateCourse = useCallback(async (courseId: string, updates: Partial<Omit<Course, 'id'>>) => {
+    const current = stateRef.current.courses.find((course) => course.id === courseId);
+    if (!current) return false;
+    const course = { ...current, ...updates };
+    const payload = {
+      code: course.code, title: course.title, batch_name: course.batchName, instructor: course.instructor,
+      accent_color: course.accentColor, description: course.description || null, schedule_cadence: course.scheduleCadence || null,
+      classes_per_week: course.classesPerWeek || null, weekly_slots: course.weeklySlots || [],
+    };
+    const { data, error } = await supabase.from('courses').update(payload).eq('id', courseId).select();
+    return refreshAfterTeacherSave('courses', { id: courseId, ...payload }, data, error);
+  }, [refreshAfterTeacherSave]);
   const deleteCourse = useCallback((courseId: string) => persistAndRefresh((prev) => ({
     ...prev, courses: prev.courses.filter((c) => c.id !== courseId), students: prev.students.map((s) => ({ ...s, enrolledCourseIds: s.enrolledCourseIds.filter((id) => id !== courseId) })),
     sessions: prev.sessions.filter((s) => s.courseId !== courseId), assignments: prev.assignments.filter((a) => a.courseId !== courseId), materials: prev.materials.filter((m) => m.courseId !== courseId),
     liveHero: prev.liveHero?.courseId === courseId ? null : prev.liveHero,
   })), [persistAndRefresh]);
-  const addSession = useCallback((session: Omit<ScheduleSession, 'id'>) => {
-    const next = { ...session, id: id('session'), meetingUrl: normalizeExternalUrl(session.meetingUrl) }; void persistAndRefresh((prev) => ({ ...prev, sessions: sortSessions([...prev.sessions, next]) })); return next;
-  }, [persistAndRefresh]);
-  const updateSession = useCallback((sessionId: string, updates: Partial<Omit<ScheduleSession, 'id'>>) => persistAndRefresh((prev) => ({ ...prev, sessions: sortSessions(prev.sessions.map((s) => s.id === sessionId ? { ...s, ...updates, meetingUrl: updates.meetingUrl === undefined ? s.meetingUrl : normalizeExternalUrl(updates.meetingUrl) } : s)) })), [persistAndRefresh]);
+  const addSession = useCallback(async (session: Omit<ScheduleSession, 'id'>) => {
+    const payload = {
+      id: id('session'), course_id: session.courseId, topic: session.topic, session_date: session.date,
+      start_time: session.startTime, end_time: session.endTime, status: session.status,
+      meeting_url: normalizeExternalUrl(session.meetingUrl),
+    };
+    const { data, error } = await supabase.from('class_sessions').insert([payload]).select();
+    return refreshAfterTeacherSave('class_sessions', payload, data, error);
+  }, [refreshAfterTeacherSave]);
+  const updateSession = useCallback(async (sessionId: string, updates: Partial<Omit<ScheduleSession, 'id'>>) => {
+    const current = stateRef.current.sessions.find((session) => session.id === sessionId);
+    if (!current) return false;
+    const session = { ...current, ...updates };
+    const payload = {
+      course_id: session.courseId, topic: session.topic, session_date: session.date, start_time: session.startTime,
+      end_time: session.endTime, status: session.status, meeting_url: normalizeExternalUrl(session.meetingUrl),
+    };
+    const { data, error } = await supabase.from('class_sessions').update(payload).eq('id', sessionId).select();
+    return refreshAfterTeacherSave('class_sessions', { id: sessionId, ...payload }, data, error);
+  }, [refreshAfterTeacherSave]);
   const deleteSession = useCallback((sessionId: string) => persistAndRefresh((prev) => ({ ...prev, sessions: prev.sessions.filter((s) => s.id !== sessionId) })), [persistAndRefresh]);
-  const addAssignment = useCallback((assignment: Omit<Assignment, 'id'>) => {
-    const next = { ...assignment, id: id('assignment'), resourceUrl: normalizeExternalUrl(assignment.resourceUrl) }; void persistAndRefresh((prev) => ({ ...prev, assignments: [next, ...prev.assignments] })); return next;
-  }, [persistAndRefresh]);
-  const updateAssignment = useCallback((assignmentId: string, updates: Partial<Omit<Assignment, 'id'>>) => persistAndRefresh((prev) => ({ ...prev, assignments: prev.assignments.map((a) => a.id === assignmentId ? { ...a, ...updates } : a) })), [persistAndRefresh]);
+  const addAssignment = useCallback(async (assignment: Omit<Assignment, 'id'>) => {
+    const assignmentId = id('assignment');
+    try {
+      const payload = {
+        id: assignmentId, course_id: assignment.courseId, title: assignment.title, due_date: assignment.dueDate,
+        description: assignment.description, resource_url: normalizeExternalUrl(assignment.resourceUrl),
+        resource_label: assignment.resourceLabel || null,
+        attachment_path: await uploadAttachment('course-materials', `assignments/${assignmentId}/${assignment.attachment?.fileName || 'attachment'}`, assignment.attachment),
+        attachment_name: assignment.attachment?.fileName || null, attachment_size: assignment.attachment?.fileSize || null,
+        attachment_type: assignment.attachment?.fileType || null,
+      };
+      const { data, error } = await supabase.from('assignments').insert([payload]).select();
+      return refreshAfterTeacherSave('assignments', payload, data, error);
+    } catch (error) {
+      reportTeacherSaveFailure('assignments', { id: assignmentId, ...assignment }, error);
+      return false;
+    }
+  }, [refreshAfterTeacherSave, reportTeacherSaveFailure]);
+  const updateAssignment = useCallback(async (assignmentId: string, updates: Partial<Omit<Assignment, 'id'>>) => {
+    const current = stateRef.current.assignments.find((assignment) => assignment.id === assignmentId);
+    if (!current) return false;
+    const assignment = { ...current, ...updates };
+    try {
+      const payload = {
+        course_id: assignment.courseId, title: assignment.title, due_date: assignment.dueDate,
+        description: assignment.description, resource_url: normalizeExternalUrl(assignment.resourceUrl),
+        resource_label: assignment.resourceLabel || null,
+        attachment_path: await uploadAttachment('course-materials', `assignments/${assignmentId}/${assignment.attachment?.fileName || 'attachment'}`, assignment.attachment),
+        attachment_name: assignment.attachment?.fileName || null, attachment_size: assignment.attachment?.fileSize || null,
+        attachment_type: assignment.attachment?.fileType || null,
+      };
+      const { data, error } = await supabase.from('assignments').update(payload).eq('id', assignmentId).select();
+      return refreshAfterTeacherSave('assignments', { id: assignmentId, ...payload }, data, error);
+    } catch (error) {
+      reportTeacherSaveFailure('assignments', assignment, error);
+      return false;
+    }
+  }, [refreshAfterTeacherSave, reportTeacherSaveFailure]);
   const deleteAssignment = useCallback((assignmentId: string) => persistAndRefresh((prev) => ({ ...prev, assignments: prev.assignments.filter((a) => a.id !== assignmentId), submissions: prev.submissions.filter((s) => s.assignmentId !== assignmentId) })), [persistAndRefresh]);
   const submitAssignment = useCallback((assignmentId: string, studentId: string, submissionUrl: string, submissionNote: string, attachment?: UploadedFileMeta) => persistState((prev) => {
     const existing = prev.submissions.find((s) => s.assignmentId === assignmentId && s.studentId === studentId);
@@ -452,11 +551,32 @@ export function usePortalStore() {
     const next = { id: existing?.id || id('submission'), assignmentId, studentId, status: 'Graded' as const, ...existing, grade: grade.trim(), teacherFeedback: teacherFeedback.trim(), submittedAt: existing?.submittedAt || new Date().toISOString() };
     return { ...prev, submissions: [next, ...prev.submissions.filter((s) => s.id !== existing?.id)], activityLogs: [{ id: id('log'), studentId, action: `Graded Assignment: ${prev.assignments.find((a) => a.id === assignmentId)?.title || 'Coursework'}`, details: `Score: ${grade.trim()}`, timestamp: new Date().toISOString() }, ...prev.activityLogs] };
   }), [persistState]);
-  const addMaterial = useCallback((material: Omit<StudyMaterial, 'id'>) => {
-    const next = { ...material, id: id('material'), url: normalizeExternalUrl(material.url) }; void persistAndRefresh((prev) => ({ ...prev, materials: [next, ...prev.materials] })); return next;
-  }, [persistAndRefresh]);
+  const addMaterial = useCallback(async (material: Omit<StudyMaterial, 'id'>) => {
+    const materialId = id('material');
+    try {
+      const payload = {
+        id: materialId, course_id: material.courseId, title: material.title, type: material.type,
+        material_date: material.date, meta_info: material.metaInfo, url: normalizeExternalUrl(material.url),
+        storage_path: await uploadAttachment('course-materials', `materials/${material.courseId}/${materialId}/${material.attachment?.fileName || 'attachment'}`, material.attachment),
+        file_name: material.attachment?.fileName || null, file_size: material.attachment?.fileSize || null,
+        file_type: material.attachment?.fileType || null,
+      };
+      const { data, error } = await supabase.from('materials').insert([payload]).select();
+      return refreshAfterTeacherSave('materials', payload, data, error);
+    } catch (error) {
+      reportTeacherSaveFailure('materials', { id: materialId, ...material }, error);
+      return false;
+    }
+  }, [refreshAfterTeacherSave, reportTeacherSaveFailure]);
   const deleteMaterial = useCallback((materialId: string) => persistAndRefresh((prev) => ({ ...prev, materials: prev.materials.filter((m) => m.id !== materialId) })), [persistAndRefresh]);
-  const saveMeetingLink = useCallback((rawUrl: string) => persistAndRefresh((prev) => ({ ...prev, meetingUrl: normalizeExternalUrl(rawUrl), liveHero: prev.liveHero ? { ...prev.liveHero, meetingUrl: normalizeExternalUrl(rawUrl) } : null })), [persistAndRefresh]);
+  const saveMeetingLink = useCallback(async (rawUrl: string) => {
+    const current = stateRef.current;
+    const meetingLink = normalizeExternalUrl(rawUrl);
+    const liveHero = current.liveHero ? { ...current.liveHero, meetingUrl: meetingLink } : null;
+    const payload = { id: 1, meeting_link: meetingLink, live_hero: liveHero, updated_at: new Date().toISOString() };
+    const { data, error } = await supabase.from('app_settings').upsert([payload]).select();
+    return refreshAfterTeacherSave('app_settings', payload, data, error);
+  }, [refreshAfterTeacherSave]);
   const resetAllData = useCallback(() => persistState(() => EMPTY_PORTAL_DATA), [persistState]);
 
   return { state, loading, loadError, profileDebug, refreshPortalData, logActivity, registerStudent, approveStudent, rejectStudent, changeStudentStatus, addStudent, updateStudent, deleteStudent, toggleStudentEnrollment, publishLiveHero, addCourse, updateCourse, deleteCourse, addSession, updateSession, deleteSession, addAssignment, updateAssignment, deleteAssignment, submitAssignment, retractSubmission, gradeAssignment, addMaterial, deleteMaterial, saveMeetingLink, resetAllData };

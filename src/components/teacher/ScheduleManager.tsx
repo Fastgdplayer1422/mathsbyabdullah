@@ -18,10 +18,10 @@ import { formatReadableDate } from '../../utils/formatters';
 
 interface ScheduleManagerProps {
   state: PortalState;
-  onAddSession: (session: Omit<ScheduleSession, 'id'>) => void;
-  onUpdateSession: (id: string, updates: Partial<Omit<ScheduleSession, 'id'>>) => void;
+  onAddSession: (session: Omit<ScheduleSession, 'id'>) => Promise<boolean>;
+  onUpdateSession: (id: string, updates: Partial<Omit<ScheduleSession, 'id'>>) => Promise<boolean>;
   onDeleteSession: (id: string) => void;
-  onPromoteToLiveHero: (hero: Omit<LiveSessionHero, 'updatedAt'>) => void;
+  onPromoteToLiveHero: (hero: Omit<LiveSessionHero, 'updatedAt'>) => Promise<boolean>;
   onNotify: (msg: string) => void;
 }
 
@@ -51,10 +51,10 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
 
   const effectiveCourseId = courseId || state.courses[0]?.id || '';
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!topic.trim() || !date || !startTime || !endTime || !effectiveCourseId) return;
-    onAddSession({
+    const saved = await onAddSession({
       courseId: effectiveCourseId,
       topic: topic.trim(),
       date,
@@ -63,15 +63,16 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
       status,
       meetingUrl: meetingUrl.trim(),
     });
+    if (!saved) return;
     setTopic('');
     setMeetingUrl('');
     onNotify('Added new class session to schedule');
   };
 
-  const handleEditSave = (e: React.FormEvent) => {
+  const handleEditSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSession) return;
-    onUpdateSession(editingSession.id, {
+    const saved = await onUpdateSession(editingSession.id, {
       courseId: editingSession.courseId,
       topic: editingSession.topic.trim(),
       date: editingSession.date,
@@ -80,13 +81,14 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
       status: editingSession.status,
       meetingUrl: editingSession.meetingUrl.trim(),
     });
+    if (!saved) return;
     onNotify(`Updated session "${editingSession.topic}"`);
     setEditingSession(null);
   };
 
-  const handlePromote = (session: ScheduleSession) => {
+  const handlePromote = async (session: ScheduleSession) => {
     const course = courseLookup[session.courseId];
-    onPromoteToLiveHero({
+    const saved = await onPromoteToLiveHero({
       sessionId: session.id,
       courseId: session.courseId,
       status: session.status === 'Live' ? 'live' : 'upcoming',
@@ -98,7 +100,7 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
       timezone: 'GMT+4 (Dubai)',
       meetingUrl: session.meetingUrl,
     });
-    onNotify(`Promoted "${session.topic}" to Student Live Hero`);
+    if (saved) onNotify(`Promoted "${session.topic}" to Student Live Hero`);
   };
 
   return (
@@ -306,10 +308,10 @@ export const ScheduleManager: React.FC<ScheduleManagerProps> = ({
                       <select
                         id={`status-${sess.id}`}
                         value={sess.status}
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const nextStatus = e.target.value as SessionStatus;
-                          onUpdateSession(sess.id, { status: nextStatus });
-                          onNotify(`Marked "${sess.topic}" as ${nextStatus}`);
+                          const saved = await onUpdateSession(sess.id, { status: nextStatus });
+                          if (saved) onNotify(`Marked "${sess.topic}" as ${nextStatus}`);
                         }}
                         className="rounded-lg border border-[#E7E5E4] bg-[#F8F7F4] px-2.5 py-1.5 text-xs font-semibold text-[#18181B]"
                       >

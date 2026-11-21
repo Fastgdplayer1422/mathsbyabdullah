@@ -26,8 +26,8 @@ import {
 
 interface CoursesManagerProps {
   state: PortalState;
-  onAddCourse: (course: Omit<Course, 'id'>) => void;
-  onUpdateCourse: (id: string, updates: Partial<Omit<Course, 'id'>>) => void;
+  onAddCourse: (course: Omit<Course, 'id'>) => Promise<boolean>;
+  onUpdateCourse: (id: string, updates: Partial<Omit<Course, 'id'>>) => Promise<boolean>;
   onDeleteCourse: (id: string) => void;
   onToggleEnrollment: (studentId: string, courseId: string) => void;
   onNotify: (msg: string) => void;
@@ -120,13 +120,12 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
     setWeeklySlots((prev) => buildSlotsForCount(count, prev));
   };
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !batchName.trim()) return;
 
     const formattedCadence = formatWeeklySlots(weeklySlots);
-
-    onAddCourse({
+    const saved = await onAddCourse({
       code: code.trim() || 'ACAD-01',
       title: title.trim(),
       batchName: batchName.trim(),
@@ -137,6 +136,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
       scheduleCadence: formattedCadence,
       description: description.trim(),
     });
+    if (!saved) return;
 
     setCode('');
     setTitle('');
@@ -173,13 +173,12 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
     setEditWeeklySlots((prev) => buildSlotsForCount(count, prev));
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCourse) return;
 
     const formattedCadence = formatWeeklySlots(editWeeklySlots);
-
-    onUpdateCourse(editingCourse.id, {
+    const saved = await onUpdateCourse(editingCourse.id, {
       code: editingCourse.code.trim(),
       title: editingCourse.title.trim(),
       batchName: editingCourse.batchName.trim(),
@@ -190,6 +189,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
       scheduleCadence: formattedCadence,
       description: editingCourse.description?.trim(),
     });
+    if (!saved) return;
 
     onNotify(`Updated course "${editingCourse.title}"`);
     setEditingCourse(null);

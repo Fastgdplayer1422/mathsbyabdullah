@@ -31,10 +31,10 @@ interface TeacherAdminProps {
   profileDebug: ProfileQueryDebug;
   activeTab: TeacherTab;
   onTabChange: (tab: TeacherTab) => void;
-  onSaveMeetingLink: (url: string) => void;
-  onPublishHero: (hero: Omit<LiveSessionHero, 'updatedAt'> | null) => void;
-  onAddCourse: (course: Omit<Course, 'id'>) => void;
-  onUpdateCourse: (id: string, updates: Partial<Omit<Course, 'id'>>) => void;
+  onSaveMeetingLink: (url: string) => Promise<boolean>;
+  onPublishHero: (hero: Omit<LiveSessionHero, 'updatedAt'> | null) => Promise<boolean>;
+  onAddCourse: (course: Omit<Course, 'id'>) => Promise<boolean>;
+  onUpdateCourse: (id: string, updates: Partial<Omit<Course, 'id'>>) => Promise<boolean>;
   onDeleteCourse: (id: string) => void;
   onApproveStudent: (studentId: string, courseIds: string[]) => void;
   onRejectStudent: (studentId: string) => void;
@@ -43,11 +43,11 @@ interface TeacherAdminProps {
   onUpdateStudent: (id: string, updates: Partial<Omit<Student, 'id' | 'createdAt'>>) => void;
   onDeleteStudent: (id: string) => void;
   onToggleEnrollment: (studentId: string, courseId: string) => void;
-  onAddSession: (session: Omit<ScheduleSession, 'id'>) => void;
-  onUpdateSession: (id: string, updates: Partial<Omit<ScheduleSession, 'id'>>) => void;
+  onAddSession: (session: Omit<ScheduleSession, 'id'>) => Promise<boolean>;
+  onUpdateSession: (id: string, updates: Partial<Omit<ScheduleSession, 'id'>>) => Promise<boolean>;
   onDeleteSession: (id: string) => void;
-  onAddAssignment: (assignment: Omit<Assignment, 'id'>) => void;
-  onUpdateAssignment: (id: string, updates: Partial<Omit<Assignment, 'id'>>) => void;
+  onAddAssignment: (assignment: Omit<Assignment, 'id'>) => Promise<boolean>;
+  onUpdateAssignment: (id: string, updates: Partial<Omit<Assignment, 'id'>>) => Promise<boolean>;
   onGradeAssignment: (
     assignmentId: string,
     studentId: string,
@@ -55,7 +55,7 @@ interface TeacherAdminProps {
     teacherFeedback: string
   ) => void;
   onDeleteAssignment: (id: string) => void;
-  onAddMaterial: (material: Omit<StudyMaterial, 'id'>) => void;
+  onAddMaterial: (material: Omit<StudyMaterial, 'id'>) => Promise<boolean>;
   onDeleteMaterial: (id: string) => void;
   onResetAllData: () => void;
   onNotify: (msg: string) => void;

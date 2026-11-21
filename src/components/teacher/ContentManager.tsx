@@ -27,8 +27,8 @@ import { formatReadableDate } from '../../utils/formatters';
 
 interface ContentManagerProps {
   state: PortalState;
-  onAddAssignment: (assignment: Omit<Assignment, 'id'>) => void;
-  onUpdateAssignment: (id: string, updates: Partial<Omit<Assignment, 'id'>>) => void;
+  onAddAssignment: (assignment: Omit<Assignment, 'id'>) => Promise<boolean>;
+  onUpdateAssignment: (id: string, updates: Partial<Omit<Assignment, 'id'>>) => Promise<boolean>;
   onGradeAssignment: (
     assignmentId: string,
     studentId: string,
@@ -36,7 +36,7 @@ interface ContentManagerProps {
     teacherFeedback: string
   ) => void;
   onDeleteAssignment: (id: string) => void;
-  onAddMaterial: (material: Omit<StudyMaterial, 'id'>) => void;
+  onAddMaterial: (material: Omit<StudyMaterial, 'id'>) => Promise<boolean>;
   onDeleteMaterial: (id: string) => void;
   onNotify: (msg: string) => void;
 }
@@ -144,14 +144,14 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
     }
   };
 
-  const handleCreateAssignment = (e: React.FormEvent) => {
+  const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!asgTitle.trim() || !asgDueDate || !asgDescription.trim() || !effectiveAsgCourseId) return;
     if (!asgAttachment) {
       onNotify('Upload an assignment file before publishing.');
       return;
     }
-    onAddAssignment({
+    const saved = await onAddAssignment({
       courseId: effectiveAsgCourseId,
       title: asgTitle.trim(),
       dueDate: asgDueDate,
@@ -160,6 +160,7 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
       resourceLabel: asgResourceLabel.trim() || asgAttachment?.fileName || 'Resource File',
       attachment: asgAttachment || undefined,
     });
+    if (!saved) return;
     setAsgTitle('');
     setAsgDescription('');
     setAsgResourceUrl('');
@@ -167,14 +168,14 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
     onNotify('Published new assignment with file to Student Portal');
   };
 
-  const handleCreateMaterial = (e: React.FormEvent) => {
+  const handleCreateMaterial = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!matTitle.trim() || !effectiveMatCourseId) return;
     if (!matAttachment) {
       onNotify('Upload a study material file before publishing.');
       return;
     }
-    onAddMaterial({
+    const saved = await onAddMaterial({
       courseId: effectiveMatCourseId,
       type: matType,
       title: matTitle.trim(),
@@ -189,16 +190,17 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
       url: matUrl.trim(),
       attachment: matAttachment || undefined,
     });
+    if (!saved) return;
     setMatTitle('');
     setMatUrl('');
     setMatAttachment(null);
     onNotify('Added study material to Student Dashboard feed');
   };
 
-  const handleSaveEditAssignment = (e: React.FormEvent) => {
+  const handleSaveEditAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingAsg) return;
-    onUpdateAssignment(editingAsg.id, {
+    const saved = await onUpdateAssignment(editingAsg.id, {
       courseId: editingAsg.courseId,
       title: editingAsg.title.trim(),
       dueDate: editingAsg.dueDate,
@@ -207,6 +209,7 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
       resourceLabel: editingAsg.resourceLabel?.trim(),
       attachment: editingAsg.attachment,
     });
+    if (!saved) return;
     onNotify(`Updated "${editingAsg.title}"`);
     setEditingAsg(null);
   };

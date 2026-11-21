@@ -15,7 +15,7 @@ import { normalizeExternalUrl } from '../../utils/formatters';
 
 interface ClassroomMeetingLinkProps {
   state: PortalState;
-  onSaveMeetingLink: (url: string) => void;
+  onSaveMeetingLink: (url: string) => Promise<boolean>;
   onNotify: (msg: string) => void;
   onPreviewStudentView: () => void;
 }
@@ -31,18 +31,20 @@ export const ClassroomMeetingLink: React.FC<ClassroomMeetingLinkProps> = ({
 
   const isConfigured = Boolean(state.meetingUrl && state.meetingUrl.trim().length > 0);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanUrl = normalizeExternalUrl(meetingUrlInput);
-    onSaveMeetingLink(cleanUrl);
+    const saved = await onSaveMeetingLink(cleanUrl);
+    if (!saved) return;
     setMeetingUrlInput(cleanUrl);
     setJustSaved(true);
     onNotify('Saved permanent classroom meeting link');
     setTimeout(() => setJustSaved(false), 2500);
   };
 
-  const handleClear = () => {
-    onSaveMeetingLink('');
+  const handleClear = async () => {
+    const saved = await onSaveMeetingLink('');
+    if (!saved) return;
     setMeetingUrlInput('');
     onNotify('Cleared classroom meeting link');
   };
