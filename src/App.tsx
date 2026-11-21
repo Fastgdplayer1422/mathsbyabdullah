@@ -1,0 +1,340 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ToastBanner } from './components/ToastBanner';
+import { TopNav } from './components/TopNav';
+import { AuthPage } from './components/auth/AuthPage';
+import { PendingApprovalPage } from './components/auth/PendingApprovalPage';
+import { StudentAssignments } from './components/student/StudentAssignments';
+import { StudentDashboard } from './components/student/StudentDashboard';
+import { StudentSchedule } from './components/student/StudentSchedule';
+import { TeacherAdmin } from './components/teacher/TeacherAdmin';
+import { usePortalStore } from './hooks/usePortalStore';
+import { Student, StudentTab, TeacherTab, UserSession } from './types/portal';
+
+const SESSION_STORAGE_KEY = 'mathsbyabdullah_user_session_v1';
+const LEGACY_STORAGE_KEY = 'apex_tutoring_user_session_v1';
+
+export default function App() {
+  const {
+    state,
+    logActivity,
+    saveMeetingLink,
+    registerStudent,
+    approveStudent,
+    rejectStudent,
+    changeStudentStatus,
+    publishLiveHero,
+    addCourse,
+    updateCourse,
+    deleteCourse,
+    addStudent,
+    updateStudent,
+    deleteStudent,
+    toggleStudentEnrollment,
+    addSession,
+    updateSession,
+    deleteSession,
+    addAssignment,
+    updateAssignment,
+    deleteAssignment,
+    submitAssignment,
+    retractSubmission,
+    gradeAssignment,
+    addMaterial,
+    deleteMaterial,
+    resetAllData,
+  } = usePortalStore();
+
+  // Session state with Remember Me check: checks sessionStorage first (session-only), then localStorage (persistent)
+  const [session, setSession] = useState<UserSession>(() => {
+    try {
+      // 1. Check session-only storage
+      const sessionRaw = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+      if (sessionRaw) {
+        return JSON.parse(sessionRaw) as UserSession;
+      }
+      // 2. Check persistent localStorage
+      const localRaw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+      if (localRaw) {
+        return JSON.parse(localRaw) as UserSession;
+      }
+      // Clean legacy keys if present
+      window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+      window.sessionStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+    return null;
+  });
+
+  const [studentTab, setStudentTab] = useState<StudentTab>('dashboard');
+  const [teacherTab, setTeacherTab] = useState<TeacherTab>('live-controller');
+  const [scheduleCourseFilter, setScheduleCourseFilter] = useState<string>('all');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const notify = useCallback((message: string) => {
+    setToastMessage(message);
+  }, []);
+
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = window.setTimeout(() => setToastMessage(null), 3500);
+    return () => window.clearTimeout(timer);
+  }, [toastMessage]);
+
+  const saveSession = useCallback((nextSession: UserSession, rememberMe: boolean = true) => {
+    setSession(nextSession);
+    try {
+      if (nextSession) {
+        if (rememberMe) {
+          window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
+          window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+        } else {
+          window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
+          window.localStorage.removeItem(SESSION_STORAGE_KEY);
+        }
+      } else {
+        window.localStorage.removeItem(SESSION_STORAGE_KEY);
+        window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+        window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+        window.sessionStorage.removeItem(LEGACY_STORAGE_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handleSignOut = useCallback(() => {
+    saveSession(null);
+    notify('Signed out of MathsByAbdullah');
+  }, [saveSession, notify]);
+
+  const handleStudentLogin = useCallback(
+    (student: Student, rememberMe: boolean = true) => {
+      saveSession({ role: 'student', studentId: student.id }, rememberMe);
+      if (student.status === 'approved') {
+        logActivity(student.id, 'Logged In', 'Student session started');
+        notify(`Welcome back, ${student.name.split(' ')[0]}!`);
+      } else if (student.status === 'pending') {
+        notify('Account pending verification. Opening status screen...');
+      }
+    },
+    [saveSession, logActivity, notify]
+  );
+
+  const handleTeacherLogin = useCallback(
+    (rememberMe: boolean = true) => {
+      saveSession({ role: 'teacher' }, rememberMe);
+      notify('Welcome Abdullah! Teacher Admin active.');
+    },
+    [saveSession, notify]
+  );
+
+  // Current logged in student
+  const activeStudent = useMemo(() => {
+    if (!session || session.role !== 'student') return null;
+    return state.students.find((s) => s.id === session.studentId) || null;
+  }, [session, state.students]);
+
+  // Pending approval requests counter for teacher top bar
+  const pendingRequestsCount = useMemo(() => {
+    return state.students.filter((s) => s.status === 'pending').length;
+  }, [state.students]);
+
+  // Log dashboard view for approved student
+  useEffect(() => {
+    if (
+      session?.role === 'student' &&
+      activeStudent?.status === 'approved' &&
+      studentTab === 'dashboard'
+    ) {
+      logActivity(activeStudent.id, 'Viewed Dashboard', 'Overview page opened');
+    }
+  }, [session?.role, activeStudent?.status, activeStudent?.id, studentTab, logActivity]);
+
+  const handleRefreshStudentApproval = useCallback(() => {
+    if (!activeStudent) return;
+    if (activeStudent.status === 'approved') {
+      notify('Congratulations! Your account has been approved.');
+    } else if (activeStudent.status === 'pending') {
+      notify('Still awaiting teacher verification. Please check back shortly.');
+    } else {
+      notify('Your registration was not approved.');
+    }
+  }, [activeStudent, notify]);
+
+  const handleSelectCourseForSchedule = useCallback((courseId: string) => {
+    setScheduleCourseFilter(courseId);
+    setStudentTab('schedule');
+  }, []);
+
+  // 1. If not logged in: Full-Page Auth Gate
+  if (!session) {
+    return (
+      <>
+        <AuthPage
+          state={state}
+          onStudentLogin={handleStudentLogin}
+          onStudentRegister={registerStudent}
+          onTeacherLogin={handleTeacherLogin}
+        />
+        <ToastBanner message={toastMessage} onDismiss={() => setToastMessage(null)} />
+      </>
+    );
+  }
+
+  // 2. If logged in as student
+  if (session.role === 'student') {
+    // If student record was deleted by teacher in another tab
+    if (!activeStudent) {
+      return (
+        <>
+          <AuthPage
+            state={state}
+            onStudentLogin={handleStudentLogin}
+            onStudentRegister={registerStudent}
+            onTeacherLogin={handleTeacherLogin}
+          />
+          <ToastBanner
+            message="Your account session expired or was removed. Please log in again."
+            onDismiss={() => setToastMessage(null)}
+          />
+        </>
+      );
+    }
+
+    // If student status is pending or rejected: Dedicated Status Gate
+    if (activeStudent.status !== 'approved') {
+      return (
+        <>
+          <PendingApprovalPage
+            student={activeStudent}
+            onRefreshStatus={handleRefreshStudentApproval}
+            onSignOut={handleSignOut}
+          />
+          <ToastBanner message={toastMessage} onDismiss={() => setToastMessage(null)} />
+        </>
+      );
+    }
+
+    // Approved student: Full Classroom Dashboard
+    return (
+      <div className="min-h-screen flex flex-col bg-[#F8F7F4] text-[#18181B]">
+        <TopNav
+          role="student"
+          studentTab={studentTab}
+          onStudentTabChange={setStudentTab}
+          activeStudent={activeStudent}
+          onSignOut={handleSignOut}
+        />
+
+        <main className="mx-auto w-full max-w-[1240px] flex-1 px-4 py-8 sm:px-6 lg:py-10">
+          {studentTab === 'dashboard' && (
+            <StudentDashboard
+              state={state}
+              activeStudent={activeStudent}
+              onNavigateTab={setStudentTab}
+              onSelectCourseForSchedule={handleSelectCourseForSchedule}
+              onLogActivity={logActivity}
+              onSwitchToTeacher={() => {}}
+            />
+          )}
+
+          {studentTab === 'schedule' && (
+            <StudentSchedule
+              state={state}
+              activeStudent={activeStudent}
+              selectedCourseFilter={scheduleCourseFilter}
+              onCourseFilterChange={setScheduleCourseFilter}
+              onLogActivity={logActivity}
+              onSwitchToTeacher={() => {}}
+            />
+          )}
+
+          {studentTab === 'assignments' && (
+            <StudentAssignments
+              state={state}
+              activeStudent={activeStudent}
+              onSubmitAssignment={submitAssignment}
+              onRetractSubmission={retractSubmission}
+              onNotify={notify}
+              onSwitchToTeacher={() => {}}
+            />
+          )}
+        </main>
+
+        <footer className="border-t border-[#E7E5E4] bg-[#F8F7F4]">
+          <div className="mx-auto flex max-w-[1240px] flex-col gap-2 px-4 py-5 text-xs text-[#71717A] sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <p>MathsByAbdullah · Mathematics Tutoring Portal</p>
+            <p>Signed in as {activeStudent.name} ({activeStudent.gradeLevel})</p>
+          </div>
+        </footer>
+
+        <ToastBanner message={toastMessage} onDismiss={() => setToastMessage(null)} />
+      </div>
+    );
+  }
+
+  // 3. If logged in as Teacher: Full Teacher Admin Workspace
+  return (
+    <div className="min-h-screen flex flex-col bg-[#F8F7F4] text-[#18181B]">
+      <TopNav
+        role="teacher"
+        teacherTab={teacherTab}
+        onTeacherTabChange={setTeacherTab}
+        pendingRequestsCount={pendingRequestsCount}
+        onSignOut={handleSignOut}
+      />
+
+      <main className="mx-auto w-full max-w-[1240px] flex-1 px-4 py-8 sm:px-6 lg:py-10">
+        <TeacherAdmin
+          state={state}
+          activeTab={teacherTab}
+          onTabChange={setTeacherTab}
+          onSaveMeetingLink={saveMeetingLink}
+          onPublishHero={publishLiveHero}
+          onAddCourse={addCourse}
+          onUpdateCourse={updateCourse}
+          onDeleteCourse={deleteCourse}
+          onApproveStudent={approveStudent}
+          onRejectStudent={rejectStudent}
+          onChangeStudentStatus={changeStudentStatus}
+          onAddStudent={addStudent}
+          onUpdateStudent={updateStudent}
+          onDeleteStudent={deleteStudent}
+          onToggleEnrollment={toggleStudentEnrollment}
+          onAddSession={addSession}
+          onUpdateSession={updateSession}
+          onDeleteSession={deleteSession}
+          onAddAssignment={addAssignment}
+          onUpdateAssignment={updateAssignment}
+          onGradeAssignment={gradeAssignment}
+          onDeleteAssignment={deleteAssignment}
+          onAddMaterial={addMaterial}
+          onDeleteMaterial={deleteMaterial}
+          onResetAllData={resetAllData}
+          onNotify={notify}
+        />
+      </main>
+
+      <footer className="border-t border-[#E7E5E4] bg-[#F8F7F4]">
+        <div className="mx-auto flex max-w-[1240px] flex-col gap-2 px-4 py-5 text-xs text-[#71717A] sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <p>MathsByAbdullah · Teacher &amp; Lead Tutor Workspace</p>
+          <div className="flex items-center gap-3">
+            {pendingRequestsCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setTeacherTab('students-enrollments')}
+                className="font-semibold text-[#EA580C] hover:underline"
+              >
+                {pendingRequestsCount} pending approval request(s)
+              </button>
+            )}
+            <span>Logged in as Abdullah (Lead Tutor)</span>
+          </div>
+        </div>
+      </footer>
+
+      <ToastBanner message={toastMessage} onDismiss={() => setToastMessage(null)} />
+    </div>
+  );
+}
