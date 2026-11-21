@@ -259,22 +259,28 @@ export function usePortalStore() {
         return { success: false, error: 'We could not finish setting up your account. Please try again or contact the teacher.' };
       }
 
-      const { error: profileError } = await supabase.from('profiles').upsert({
+      const gradeLevel = data.gradeLevel.trim();
+      const requestNote = data.requestNote?.trim();
+      const profile = {
         id: userId,
         full_name: fullName,
         email,
-        role: 'student',
-        status: 'pending',
-        grade_level: data.gradeLevel.trim(),
-        request_note: data.requestNote?.trim() || null,
-      }, { onConflict: 'id' });
+        role: 'student' as const,
+        status: 'pending' as const,
+        ...(gradeLevel ? { grade_level: gradeLevel } : {}),
+        ...(requestNote ? { request_note: requestNote } : {}),
+      };
+      const { error: profileError } = await supabase.from('profiles').upsert(profile, { onConflict: 'id' });
 
       if (profileError) {
         console.error('[auth] Student profile upsert failed', {
           code: profileError.code,
           message: profileError.message,
         });
-        return { success: false, error: 'Your account was created, but we could not save your student profile. Please try again or contact the teacher.' };
+        return {
+          success: false,
+          error: `Your account was created, but we could not save your student profile. Database error (code: ${profileError.code || 'unknown'}): ${profileError.message}`,
+        };
       }
 
       return { success: true, confirmationRequired: !signUpData.session };
