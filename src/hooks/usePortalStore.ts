@@ -36,7 +36,7 @@ async function loadPortalState(): Promise<PortalState> {
   const { data: authData } = await supabase.auth.getUser();
   const user = authData.user;
   const [profiles, courses, enrollments, settings, sessions, assignments, materials, submissions, logs] = await Promise.all([
-    user ? supabase.from('profiles').select('id,full_name,email,role,status,grade_level,notes,request_note,created_at') : Promise.resolve({ data: [], error: null }),
+    user ? supabase.from('profiles').select('id,full_name,email,role,status,grade_level,notes,request_note,created_at').eq('role', 'student') : Promise.resolve({ data: [], error: null }),
     supabase.from('courses').select('*'),
     user ? supabase.from('enrollments').select('student_id,course_id') : Promise.resolve({ data: [], error: null }),
     user ? supabase.from('app_settings').select('meeting_link,live_hero').eq('id', 1).maybeSingle() : Promise.resolve({ data: null, error: null }),
@@ -46,7 +46,14 @@ async function loadPortalState(): Promise<PortalState> {
     user ? supabase.from('submissions').select('*') : Promise.resolve({ data: [], error: null }),
     user ? supabase.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(300) : Promise.resolve({ data: [], error: null }),
   ]);
-  const failures = [profiles, courses, enrollments, settings, sessions, assignments, materials, submissions, logs].filter((result) => result.error);
+  if (profiles.error) {
+    console.error('[portal] Failed to load student profiles', {
+      code: profiles.error.code,
+      message: profiles.error.message,
+    });
+    throw profiles.error;
+  }
+  const failures = [courses, enrollments, settings, sessions, assignments, materials, submissions, logs].filter((result) => result.error);
   if (failures.length) throw failures[0].error;
   const enrollmentRows = enrollments.data || [];
   const students: Student[] = (profiles.data || []).filter((row: any) => row.role === 'student').map((row: any) => ({
@@ -229,19 +236,52 @@ export function usePortalStore() {
     persistState((prev) => ({ ...prev, activityLogs: [entry, ...prev.activityLogs].slice(0, 300) }));
   }, [persistState]);
   const registerStudent = useCallback(async (data: { name: string; email: string; password: string; gradeLevel: string; requestNote?: string }) => {
-    const { data: result, error } = await supabase.auth.signUp({
-      email: data.email.trim().toLowerCase(), password: data.password,
-      options: {
-        emailRedirectTo: import.meta.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/`,
-        data: { full_name: data.name.trim(), grade_level: data.gradeLevel.trim(), request_note: data.requestNote?.trim() || '' },
-      },
-    });
-    if (error) {
-      if (error.message.toLowerCase().includes('already registered')) return { success: false, error: 'Unable to register with these details. If you already have an account, try signing in.' };
-      if (error.message.toLowerCase().includes('password')) return { success: false, error: 'Choose a stronger password that meets the account security requirements.' };
-      return { success: false, error: 'Registration could not be completed. Check your details and try again.' };
+    const fullName = data.name.trim();
+    const email = data.email.trim().toLowerCase();
+
+    try {
+      const { data: signUpData, error } = await supabase.auth.signUp({
+        email,
+        password: data.password,
+        options: {
+          emailRedirectTo: import.meta.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/`,
+          data: { full_name: fullName, grade_level: data.gradeLevel.trim(), request_note: data.requestNote?.trim() || '' },
+        },
+      });
+      if (error) {
+        if (error.message.toLowerCase().includes('already registered')) return { success: false, error: 'Unable to register with these details. If you already have an account, try signing in.' };
+        if (error.message.toLowerCase().includes('password')) return { success: false, error: 'Choose a stronger password that meets the account security requirements.' };
+        return { success: false, error: 'Registration could not be completed. Check your details and try again.' };
+      }
+
+      const userId = signUpData.user?.id ?? signUpData.session?.user?.id;
+      if (!userId) {
+        return { success: false, error: 'We could not finish setting up your account. Please try again or contact the teacher.' };
+      }
+
+      const { error: profileError } = await supabase.from('profiles').upsert({
+        id: userId,
+        full_name: fullName,
+        email,
+        role: 'student',
+        status: 'pending',
+        grade_level: data.gradeLevel.trim(),
+        request_note: data.requestNote?.trim() || null,
+      }, { onConflict: 'id' });
+
+      if (profileError) {
+        console.error('[auth] Student profile upsert failed', {
+          code: profileError.code,
+          message: profileError.message,
+        });
+        return { success: false, error: 'Your account was created, but we could not save your student profile. Please try again or contact the teacher.' };
+      }
+
+      return { success: true, confirmationRequired: !signUpData.session };
+    } catch (registrationError) {
+      console.error('[auth] Student registration failed', registrationError);
+      return { success: false, error: 'Registration could not be completed. Please try again or contact the teacher.' };
     }
-    return { success: true, confirmationRequired: !result.session };
   }, []);
   const approveStudent = useCallback((studentId: string, enrolledCourseIds: string[] = []) => persistState((prev) => ({
     ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, status: 'approved', enrolledCourseIds } : s),
