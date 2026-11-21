@@ -21,6 +21,8 @@ export default function App() {
     state,
     loading: portalLoading,
     loadError,
+    submissionLoadError,
+    submissionsReady,
     profileDebug,
     refreshPortalData,
     logActivity,
@@ -324,6 +326,8 @@ export default function App() {
       <PhotoToPdfScanner
         state={state}
         activeStudent={activeStudent}
+        submissionsReady={submissionsReady}
+        submissionLoadError={submissionLoadError}
         onSubmitAssignment={submitAssignment}
         onNotify={notify}
         onNavigateTab={setStudentTab}
@@ -335,6 +339,9 @@ export default function App() {
             <StudentAssignments
               state={state}
               activeStudent={activeStudent}
+              submissionsReady={submissionsReady}
+              submissionLoadError={submissionLoadError}
+              onRefreshSubmissions={refreshPortalData}
               onSubmitAssignment={submitAssignment}
               onRetractSubmission={retractSubmission}
               onNotify={notify}

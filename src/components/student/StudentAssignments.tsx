@@ -19,6 +19,7 @@ import {
   Course,
   PortalState,
   Student,
+  SubmissionSaveResult,
   UploadedFileMeta,
 } from '../../types/portal';
 import { formatReadableDate } from '../../utils/formatters';
@@ -27,13 +28,16 @@ import { downloadDataUrl, formatFileSize, readFileAsDataUrl } from '../../utils/
 interface StudentAssignmentsProps {
   state: PortalState;
   activeStudent: Student | null;
+  submissionsReady: boolean;
+  submissionLoadError: string | null;
+  onRefreshSubmissions: () => void;
   onSubmitAssignment: (
     assignmentId: string,
     studentId: string,
     submissionUrl: string,
     submissionNote: string,
     attachment?: UploadedFileMeta
-  ) => void;
+  ) => Promise<SubmissionSaveResult>;
   onRetractSubmission: (assignmentId: string, studentId: string) => void;
   onNotify: (msg: string) => void;
   onSwitchToTeacher: () => void;
@@ -64,6 +68,9 @@ const ASSIGNMENT_STATUS_META: Record<
 export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
   state,
   activeStudent,
+  submissionsReady,
+  submissionLoadError,
+  onRefreshSubmissions,
   onSubmitAssignment,
   onRetractSubmission,
   onNotify,
@@ -77,6 +84,8 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
   const [submissionNote, setSubmissionNote] = useState('');
   const [submissionAttachment, setSubmissionAttachment] = useState<UploadedFileMeta | null>(null);
   const [uploadError, setUploadError] = useState('');
+  const [submissionError, setSubmissionError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const enrolledCourseIds = activeStudent?.enrolledCourseIds ?? [];
 
@@ -156,6 +165,7 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
     setSubmissionNote(assignment.submissionNote ?? '');
     setSubmissionAttachment(null);
     setUploadError('');
+    setSubmissionError('');
   };
 
   const handleSubmissionFile = async (file?: File) => {
@@ -183,23 +193,48 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
     }
   };
 
-  const handleModalSubmit = (e: React.FormEvent) => {
+  const handleModalSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeModalAssignment || !activeStudent) return;
+    if (!activeModalAssignment || !activeStudent || isSubmitting) return;
     if (!submissionAttachment) {
       setUploadError('Upload your completed workings as a PDF before submitting.');
       return;
     }
-    onSubmitAssignment(activeModalAssignment.id, activeStudent.id, '', submissionNote, submissionAttachment);
-    onNotify(`Submitted "${activeModalAssignment.title}"`);
-    setActiveModalAssignment(null);
-    setSubmissionUrl('');
-    setSubmissionNote('');
-    setSubmissionAttachment(null);
+
+    setSubmissionError('');
+    setIsSubmitting(true);
+    try {
+      const result = await onSubmitAssignment(activeModalAssignment.id, activeStudent.id, '', submissionNote, submissionAttachment);
+      if (!result.success) {
+        setSubmissionError(result.error || 'Your submission could not be saved. Please try again.');
+        return;
+      }
+      onNotify(result.warning || `Submitted "${activeModalAssignment.title}"`);
+      setActiveModalAssignment(null);
+      setSubmissionUrl('');
+      setSubmissionNote('');
+      setSubmissionAttachment(null);
+    } catch (error) {
+      setSubmissionError(error instanceof Error ? error.message : 'Your submission could not be saved. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="space-y-6">
+      {submissionLoadError && (
+        <div role="alert" className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <p className="font-semibold">Saved submission status couldn&apos;t be verified.</p>
+            <p className="text-xs">Submission actions are disabled to avoid duplicate work. {submissionLoadError}</p>
+          </div>
+          <button type="button" onClick={() => void onRefreshSubmissions()} className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-2 text-xs font-semibold text-red-900 hover:bg-red-100">
+            Retry loading
+          </button>
+        </div>
+      )}
+
       {/* Header Row */}
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="space-y-1">
@@ -396,7 +431,7 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
                       </a>
                     ) : null}
 
-                    {assignment.status === 'Pending' && (
+                    {submissionsReady && assignment.status === 'Pending' && (
                       <button
                         type="button"
                         onClick={() => openSubmitModal(assignment)}
@@ -407,7 +442,7 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
                       </button>
                     )}
 
-                    {assignment.status === 'Submitted' && (
+                    {submissionsReady && assignment.status === 'Submitted' && (
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
@@ -461,9 +496,10 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
               </div>
               <button
                 type="button"
+                disabled={isSubmitting}
                 onClick={() => setActiveModalAssignment(null)}
                 aria-label="Close submission modal"
-                className="rounded-lg p-1.5 text-[#71717A] hover:bg-[#F4F4F5] hover:text-[#18181B]"
+                className="rounded-lg p-1.5 text-[#71717A] hover:bg-[#F4F4F5] hover:text-[#18181B] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -477,7 +513,8 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
                 <input id="submission-pdf" type="file" accept="application/pdf,.pdf" onChange={(event) => void handleSubmissionFile(event.target.files?.[0])} className="block w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] p-2 text-xs file:mr-3 file:rounded-md file:border-0 file:bg-[#EEF2FF] file:px-3 file:py-2 file:text-xs file:font-semibold file:text-[#4338CA]" />
                 {submissionAttachment && <p className="text-xs text-[#4338CA]">{submissionAttachment.fileName} · {formatFileSize(submissionAttachment.fileSize)}</p>}
                 {uploadError && <p role="alert" className="text-xs font-medium text-red-700">{uploadError}</p>}
-                <button type="button" onClick={() => { setActiveModalAssignment(null); onNavigateTab('photo-to-pdf'); }} className="text-xs font-semibold text-[#4338CA] underline underline-offset-2">Need to turn phone photos into a PDF? Open Photo to PDF</button>
+                {submissionError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-800">{submissionError}</p>}
+                <button type="button" disabled={isSubmitting} onClick={() => { setActiveModalAssignment(null); onNavigateTab('photo-to-pdf'); }} className="text-xs font-semibold text-[#4338CA] underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-50">Need to turn phone photos into a PDF? Open Photo to PDF</button>
               </div>
 
               <div className="space-y-1.5">
@@ -500,17 +537,20 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
               <div className="flex items-center justify-end gap-2.5 border-t border-[#E7E5E4] pt-4">
                 <button
                   type="button"
+                  disabled={isSubmitting}
                   onClick={() => setActiveModalAssignment(null)}
-                  className="rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] px-4 py-2 text-xs font-semibold text-[#52525B] hover:text-[#18181B]"
+                  className="rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] px-4 py-2 text-xs font-semibold text-[#52525B] hover:text-[#18181B] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-2 rounded-full bg-[#18181B] px-5 py-2 text-xs font-semibold text-white hover:bg-[#27272A]"
+                  disabled={isSubmitting}
+                  aria-busy={isSubmitting}
+                  className="inline-flex items-center gap-2 rounded-full bg-[#18181B] px-5 py-2 text-xs font-semibold text-white hover:bg-[#27272A] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <CheckCircle2 className="h-3.5 w-3.5 text-[#F97316]" aria-hidden="true" />
-                  <span>Mark as Submitted</span>
+                  <span>{isSubmitting ? 'Saving…' : 'Mark as Submitted'}</span>
                 </button>
               </div>
             </form>

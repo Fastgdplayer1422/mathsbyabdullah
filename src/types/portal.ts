@@ -55,6 +55,12 @@ export interface StudentSubmission {
   attachment?: UploadedFileMeta;
 }
 
+export interface SubmissionSaveResult {
+  success: boolean;
+  error?: string;
+  warning?: string;
+}
+
 export type DayOfWeek =
   | 'Monday'
   | 'Tuesday'

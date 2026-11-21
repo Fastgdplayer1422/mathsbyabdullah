@@ -19,19 +19,21 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
-import { Assignment, PortalState, Student, UploadedFileMeta } from '../../types/portal';
+import { Assignment, PortalState, Student, SubmissionSaveResult, UploadedFileMeta } from '../../types/portal';
 import { formatFileSize, readFileAsDataUrl } from '../../utils/fileHelpers';
 
 interface PhotoToPdfScannerProps {
   state: PortalState;
   activeStudent: Student;
+  submissionsReady: boolean;
+  submissionLoadError: string | null;
   onSubmitAssignment: (
     assignmentId: string,
     studentId: string,
     submissionUrl: string,
     submissionNote: string,
     attachment?: UploadedFileMeta
-  ) => void;
+  ) => Promise<SubmissionSaveResult>;
   onNotify: (msg: string) => void;
   onNavigateTab: (tab: 'dashboard' | 'assignments') => void;
 }
@@ -46,6 +48,8 @@ interface ScannedPage {
 export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
   state,
   activeStudent,
+  submissionsReady,
+  submissionLoadError,
   onSubmitAssignment,
   onNotify,
   onNavigateTab,
@@ -53,6 +57,8 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
   const [pages, setPages] = useState<ScannedPage[]>([]);
   const [pdfFileName, setPdfFileName] = useState('Maths_Workings.pdf');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState('');
   const [selectedAssignmentId, setSelectedAssignmentId] = useState('');
   const [submissionNote, setSubmissionNote] = useState('');
   const [lastGeneratedPdf, setLastGeneratedPdf] = useState<{
@@ -288,8 +294,12 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
 
   const handleSubmitToAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedAssignmentId) {
-      onNotify('Please select an open assignment to submit this PDF to.');
+    if (!submissionsReady) {
+      setSubmissionError(submissionLoadError || 'Saved submission statuses are still loading. Please wait before submitting.');
+      return;
+    }
+    if (!selectedAssignmentId || isSubmitting) {
+      if (!selectedAssignmentId) onNotify('Please select an open assignment to submit this PDF to.');
       return;
     }
 
@@ -304,21 +314,31 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
       uploadedAt: new Date().toISOString(),
     };
 
-    onSubmitAssignment(
-      selectedAssignmentId,
-      activeStudent.id,
-      '',
-      submissionNote.trim() || `Submitted via Photo-to-PDF Scanner (${pages.length} pages)`,
-      attachment
-    );
+    setSubmissionError('');
+    setIsSubmitting(true);
+    try {
+      const result = await onSubmitAssignment(
+        selectedAssignmentId,
+        activeStudent.id,
+        '',
+        submissionNote.trim() || `Submitted via Photo-to-PDF Scanner (${pages.length} pages)`,
+        attachment
+      );
+      if (!result.success) {
+        setSubmissionError(result.error || 'Your submission could not be saved. Please try again.');
+        return;
+      }
 
-    const targetAsg = state.assignments.find((a) => a.id === selectedAssignmentId);
-    onNotify(`Successfully submitted PDF to "${targetAsg?.title || 'Assignment'}"!`);
-
-    // Reset and redirect
-    setSelectedAssignmentId('');
-    setSubmissionNote('');
-    onNavigateTab('assignments');
+      const targetAsg = state.assignments.find((a) => a.id === selectedAssignmentId);
+      onNotify(result.warning || `Successfully submitted PDF to "${targetAsg?.title || 'Assignment'}"!`);
+      setSelectedAssignmentId('');
+      setSubmissionNote('');
+      onNavigateTab('assignments');
+    } catch (error) {
+      setSubmissionError(error instanceof Error ? error.message : 'Your submission could not be saved. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -656,17 +676,20 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
                   />
                 </div>
 
+                {!submissionsReady && <p role={submissionLoadError ? 'alert' : 'status'} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">{submissionLoadError || 'Loading saved submission status. Submitting will be enabled when it is ready.'}</p>}
+                {submissionError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-800">{submissionError}</p>}
                 <button
                   type="submit"
-                  disabled={isGenerating || !selectedAssignmentId}
+                  disabled={isGenerating || isSubmitting || !selectedAssignmentId || !submissionsReady}
+                  aria-busy={isGenerating || isSubmitting}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#4338CA] px-5 py-3 text-xs font-semibold text-white hover:bg-[#3730A3] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
                 >
-                  {isGenerating ? (
+                  {isGenerating || isSubmitting ? (
                     <Loader2 className="h-4 w-4 animate-spin text-white" />
                   ) : (
                     <CheckCircle2 className="h-4 w-4 text-[#F97316]" />
                   )}
-                  <span>Generate &amp; Submit PDF Workings</span>
+                  <span>{isGenerating ? 'Generating PDF…' : isSubmitting ? 'Saving submission…' : 'Generate & Submit PDF Workings'}</span>
                 </button>
               </form>
             </div>
