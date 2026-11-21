@@ -35,7 +35,7 @@ interface StudentsManagerProps {
   onApproveStudent: (studentId: string, courseIds: string[]) => void;
   onRejectStudent: (studentId: string) => void;
   onChangeStudentStatus: (studentId: string, status: StudentStatus) => void;
-  onAddStudent: (student: Omit<Student, 'id' | 'createdAt'>) => void;
+  onAddStudent: (student: Omit<Student, 'id' | 'createdAt'>, initialPassword: string) => Promise<Student>;
   onUpdateStudent: (id: string, updates: Partial<Omit<Student, 'id' | 'createdAt'>>) => void;
   onDeleteStudent: (id: string) => void;
   onToggleEnrollment: (studentId: string, courseId: string) => void;
@@ -66,7 +66,7 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
   const [showAddModal, setShowAddModal] = useState(false);
   const [addName, setAddName] = useState('');
   const [addEmail, setAddEmail] = useState('');
-  const [addPassword, setAddPassword] = useState('password123');
+  const [addPassword, setAddPassword] = useState('');
   const [addGrade, setAddGrade] = useState('Year 11 / IGCSE');
   const [addNotes, setAddNotes] = useState('');
   const [addCourses, setAddCourses] = useState<string[]>([]);
@@ -163,7 +163,7 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
     );
   };
 
-  const handleManualAddStudent = (e: React.FormEvent) => {
+  const handleManualAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddEmailError(null);
     if (!addName.trim() || !addEmail.trim()) return;
@@ -171,6 +171,11 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
     const emailCheck = validateStudentEmail(addEmail);
     if (!emailCheck.valid) {
       setAddEmailError(emailCheck.error || 'Please enter a valid personal or school email.');
+      return;
+    }
+
+    if (addPassword.length < 8) {
+      setAddEmailError('Use a temporary password with at least 8 characters.');
       return;
     }
 
@@ -183,23 +188,28 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
       return;
     }
 
-    onAddStudent({
-      name: addName.trim(),
-      email: emailNormalized,
-      password: addPassword.trim() || 'password123',
-      status: 'approved',
-      gradeLevel: addGrade.trim(),
-      notes: addNotes.trim(),
-      enrolledCourseIds: addCourses,
-    });
+    try {
+      await onAddStudent({
+        name: addName.trim(),
+        email: emailNormalized,
+        status: 'pending',
+        gradeLevel: addGrade.trim(),
+        notes: addNotes.trim(),
+        enrolledCourseIds: [],
+      }, addPassword);
+    } catch (error) {
+      setAddEmailError(error instanceof Error ? error.message : 'Unable to create this account.');
+      return;
+    }
 
     setAddName('');
     setAddEmail('');
+    setAddPassword('');
     setAddNotes('');
     setAddCourses([]);
     setAddEmailError(null);
     setShowAddModal(false);
-    onNotify(`Manually added approved student "${addName.trim()}"`);
+    onNotify(`Created a student account for ${emailNormalized}. Review the pending request to approve and enroll them.`);
   };
 
   const openGradeModal = (asg: Assignment, currentSub?: StudentSubmission) => {
@@ -659,13 +669,15 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                   )}
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-[#18181B]">Initial Password</label>
+                  <label className="block text-xs font-semibold text-[#18181B]">Temporary Password</label>
                   <input
-                    type="text"
+                    type="password"
                     required
+                    minLength={8}
+                    autoComplete="new-password"
                     value={addPassword}
                     onChange={(e) => setAddPassword(e.target.value)}
-                    placeholder="password123"
+                    placeholder="At least 8 characters"
                     className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-2 text-sm text-[#18181B]"
                   />
                 </div>

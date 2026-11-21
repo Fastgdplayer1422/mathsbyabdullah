@@ -1,810 +1,323 @@
-import { useCallback, useEffect, useState } from 'react';
-import {
-  DEFAULT_TEACHER_CREDENTIALS,
-  EMPTY_PORTAL_DATA,
-} from '../data/defaultPortalData';
-import {
-  Assignment,
-  Course,
-  LiveSessionHero,
-  PortalState,
-  ScheduleSession,
-  Student,
-  StudentActivityLog,
-  StudentStatus,
-  StudyMaterial,
-  UploadedFileMeta,
-} from '../types/portal';
-import { normalizeExternalUrl, validateStudentEmail } from '../utils/formatters';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { EMPTY_PORTAL_DATA, DEFAULT_TEACHER_CREDENTIALS } from '../data/defaultPortalData';
+import { Assignment, Course, LiveSessionHero, PortalState, ScheduleSession, Student, StudentActivityLog, StudentStatus, StudyMaterial, UploadedFileMeta } from '../types/portal';
+import { normalizeExternalUrl } from '../utils/formatters';
+import { createIsolatedAuthClient, supabase } from '../lib/supabase';
 
-const STORAGE_KEY = 'mathsbyabdullah_portal_data_v1';
+const sortSessions = (items: ScheduleSession[]) => [...items].sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`));
+const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const isoDate = (value?: string) => {
+  if (!value) return new Date().toISOString();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+};
 
-function sanitizeAndLoadInitialState(): PortalState {
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(EMPTY_PORTAL_DATA));
-      return EMPTY_PORTAL_DATA;
+async function uploadAttachment(bucket: string, path: string, attachment?: UploadedFileMeta) {
+  if (!attachment?.fileData?.startsWith('data:')) return path;
+  const response = await fetch(attachment.fileData);
+  const blob = await response.blob();
+  const { error } = await supabase.storage.from(bucket).upload(path, blob, {
+    contentType: attachment.fileType || blob.type,
+    upsert: true,
+  });
+  if (error) throw error;
+  return path;
+}
+
+async function signedAttachment(bucket: string, path: string | null, fileName: string | null, fileSize: number | null, fileType: string | null) {
+  if (!path) return undefined;
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 30);
+  if (error) return undefined;
+  return { fileName: fileName || 'download', fileSize: fileSize || 0, fileType: fileType || 'application/octet-stream', fileData: data.signedUrl, storagePath: path };
+}
+
+async function loadPortalState(): Promise<PortalState> {
+  const { data: authData } = await supabase.auth.getUser();
+  const user = authData.user;
+  const [profiles, courses, enrollments, settings, sessions, assignments, materials, submissions, logs] = await Promise.all([
+    user ? supabase.from('profiles').select('id,full_name,email,role,status,grade_level,notes,request_note,created_at') : Promise.resolve({ data: [], error: null }),
+    supabase.from('courses').select('*'),
+    user ? supabase.from('enrollments').select('student_id,course_id') : Promise.resolve({ data: [], error: null }),
+    user ? supabase.from('app_settings').select('meeting_link,live_hero').eq('id', 1).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    user ? supabase.from('class_sessions').select('*') : Promise.resolve({ data: [], error: null }),
+    user ? supabase.from('assignments').select('*') : Promise.resolve({ data: [], error: null }),
+    user ? supabase.from('materials').select('*') : Promise.resolve({ data: [], error: null }),
+    user ? supabase.from('submissions').select('*') : Promise.resolve({ data: [], error: null }),
+    user ? supabase.from('activity_logs').select('*').order('created_at', { ascending: false }).limit(300) : Promise.resolve({ data: [], error: null }),
+  ]);
+  const failures = [profiles, courses, enrollments, settings, sessions, assignments, materials, submissions, logs].filter((result) => result.error);
+  if (failures.length) throw failures[0].error;
+  const enrollmentRows = enrollments.data || [];
+  const students: Student[] = (profiles.data || []).filter((row: any) => row.role === 'student').map((row: any) => ({
+    id: row.id,
+    name: row.full_name,
+    email: row.email,
+    status: row.status,
+    gradeLevel: row.grade_level || '',
+    notes: row.notes || undefined,
+    requestNote: row.request_note || undefined,
+    enrolledCourseIds: enrollmentRows.filter((entry: any) => entry.student_id === row.id).map((entry: any) => entry.course_id),
+    createdAt: row.created_at,
+  }));
+  const mappedCourses: Course[] = (courses.data || []).map((row: any) => ({
+    id: row.id, code: row.code, title: row.title, batchName: row.batch_name, instructor: row.instructor,
+    accentColor: row.accent_color, description: row.description || undefined, scheduleCadence: row.schedule_cadence || undefined,
+    classesPerWeek: row.classes_per_week || undefined, weeklySlots: row.weekly_slots || [],
+  }));
+  const mappedSessions: ScheduleSession[] = (sessions.data || []).map((row: any) => ({
+    id: row.id, courseId: row.course_id, topic: row.topic, date: row.session_date, startTime: row.start_time,
+    endTime: row.end_time, status: row.status, meetingUrl: row.meeting_url,
+  }));
+  const mappedAssignments: Assignment[] = await Promise.all((assignments.data || []).map(async (row: any) => ({
+    id: row.id, courseId: row.course_id, title: row.title, dueDate: row.due_date, description: row.description,
+    resourceUrl: row.resource_url, resourceLabel: row.resource_label || undefined,
+    attachment: await signedAttachment('course-materials', row.attachment_path, row.attachment_name, row.attachment_size, row.attachment_type),
+  })));
+  const mappedMaterials: StudyMaterial[] = await Promise.all((materials.data || []).map(async (row: any) => ({
+    id: row.id, courseId: row.course_id, title: row.title, type: row.type, date: row.material_date,
+    metaInfo: row.meta_info, url: row.url,
+    attachment: await signedAttachment('course-materials', row.storage_path, row.file_name, row.file_size, row.file_type),
+  })));
+  const mappedSubmissions = await Promise.all((submissions.data || []).map(async (row: any) => ({
+    id: row.id, assignmentId: row.assignment_id || '', studentId: row.student_id, status: row.status,
+    submissionUrl: row.submission_url || undefined, submissionNote: row.submission_note || undefined,
+    submittedAt: row.submitted_at, grade: row.grade || undefined, teacherFeedback: row.teacher_feedback || undefined,
+    attachment: await signedAttachment('student-submissions', row.storage_path, row.file_name, row.file_size, row.file_type),
+  })));
+  return {
+    ...EMPTY_PORTAL_DATA,
+    teacherAccount: DEFAULT_TEACHER_CREDENTIALS,
+    meetingUrl: settings.data?.meeting_link || '',
+    liveHero: settings.data?.live_hero || null,
+    courses: mappedCourses,
+    students,
+    sessions: sortSessions(mappedSessions),
+    assignments: mappedAssignments,
+    materials: mappedMaterials,
+    submissions: mappedSubmissions,
+    activityLogs: (logs.data || []).map((row: any) => ({ id: row.id, studentId: row.student_id, action: row.action, details: row.details || undefined, timestamp: row.created_at })),
+  };
+}
+
+async function syncChanges(previous: PortalState, next: PortalState) {
+  const changed = async (before: any[], after: any[], toRow: (item: any) => Promise<any> | any, table: string) => {
+    const oldById = new Map(before.map((item) => [item.id, item]));
+    const newById = new Map(after.map((item) => [item.id, item]));
+    const removed = [...oldById.keys()].filter((key) => !newById.has(key));
+    const updates = after.filter((item) => !oldById.has(item.id) || !same(oldById.get(item.id), item));
+    if (removed.length) {
+      const { error } = await supabase.from(table).delete().in('id', removed);
+      if (error) throw error;
     }
-    const parsed = JSON.parse(raw) as Partial<PortalState>;
-    if (!parsed || typeof parsed !== 'object') {
-      return EMPTY_PORTAL_DATA;
+    if (updates.length) {
+      const rows = await Promise.all(updates.map(toRow));
+      const { error } = await supabase.from(table).upsert(rows);
+      if (error) throw error;
     }
-
-    // Automatically purge any mock/demo accounts ending in @example.com or test.com
-    const rawStudents = Array.isArray(parsed.students) ? parsed.students : [];
-    const sanitizedStudents: Student[] = rawStudents.filter((s) => {
-      if (!s || !s.email) return false;
-      const em = s.email.toLowerCase();
-      if (em.includes('@example.com') || em.includes('@test.com') || em.includes('fake.com')) {
-        return false;
-      }
-      return true;
-    });
-
-    const validStudentIds = new Set(sanitizedStudents.map((s) => s.id));
-
-    const rawLogs = Array.isArray(parsed.activityLogs) ? parsed.activityLogs : [];
-    const sanitizedLogs = rawLogs.filter((l) => validStudentIds.has(l.studentId));
-
-    const rawSubmissions = Array.isArray(parsed.submissions) ? parsed.submissions : [];
-    const sanitizedSubmissions = rawSubmissions.filter((sub) =>
-      validStudentIds.has(sub.studentId)
-    );
-
-    // Ensure teacher email is migrated to aa6993248@gmail.com
-    let teacherAccount = parsed.teacherAccount || DEFAULT_TEACHER_CREDENTIALS;
-    if (
-      !teacherAccount.email ||
-      teacherAccount.email.toLowerCase() === 'teacher@portal.com'
-    ) {
-      teacherAccount = {
-        ...teacherAccount,
-        email: DEFAULT_TEACHER_CREDENTIALS.email,
-        password: teacherAccount.password || DEFAULT_TEACHER_CREDENTIALS.password,
-        name: teacherAccount.name || DEFAULT_TEACHER_CREDENTIALS.name,
-      };
+  };
+  await changed(previous.students, next.students, (s: Student) => ({
+    id: s.id, full_name: s.name, email: s.email, role: 'student', status: s.status,
+    grade_level: s.gradeLevel, notes: s.notes || null, request_note: s.requestNote || null,
+  }), 'profiles');
+  const previousEnrollmentKeys = new Set(previous.students.flatMap((student) => student.enrolledCourseIds.map((courseId) => `${student.id}:${courseId}`)));
+  const nextEnrollmentKeys = new Set(next.students.flatMap((student) => student.enrolledCourseIds.map((courseId) => `${student.id}:${courseId}`)));
+  for (const key of previousEnrollmentKeys) {
+    if (!nextEnrollmentKeys.has(key)) {
+      const [studentId, courseId] = key.split(':');
+      const { error } = await supabase.from('enrollments').delete().eq('student_id', studentId).eq('course_id', courseId);
+      if (error) throw error;
     }
-
-    const meetingUrl = parsed.meetingUrl || parsed.liveHero?.meetingUrl || '';
-
-    const cleanState: PortalState = {
-      teacherAccount,
-      meetingUrl,
-      courses: Array.isArray(parsed.courses) ? parsed.courses : [],
-      students: sanitizedStudents,
-      activityLogs: sanitizedLogs,
-      submissions: sanitizedSubmissions,
-      liveHero: parsed.liveHero ?? null,
-      sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
-      assignments: Array.isArray(parsed.assignments) ? parsed.assignments : [],
-      materials: Array.isArray(parsed.materials) ? parsed.materials : [],
+  }
+  const enrollmentRows = next.students.flatMap((student) => student.enrolledCourseIds
+    .filter((courseId) => !previousEnrollmentKeys.has(`${student.id}:${courseId}`))
+    .map((courseId) => ({ student_id: student.id, course_id: courseId })));
+  if (enrollmentRows.length) {
+    const { error } = await supabase.from('enrollments').upsert(enrollmentRows);
+    if (error) throw error;
+  }
+  await changed(previous.courses, next.courses, (c: Course) => ({
+    id: c.id, code: c.code, title: c.title, batch_name: c.batchName, instructor: c.instructor,
+    accent_color: c.accentColor, description: c.description || null, schedule_cadence: c.scheduleCadence || null,
+    classes_per_week: c.classesPerWeek || null, weekly_slots: c.weeklySlots || [],
+  }), 'courses');
+  await changed(previous.sessions, next.sessions, (s: ScheduleSession) => ({
+    id: s.id, course_id: s.courseId, topic: s.topic, session_date: s.date, start_time: s.startTime,
+    end_time: s.endTime, status: s.status, meeting_url: s.meetingUrl,
+  }), 'class_sessions');
+  await changed(previous.assignments, next.assignments, async (a: Assignment) => {
+    const attachmentPath = a.attachment?.fileData?.startsWith('data:') ? await uploadAttachment('course-materials', `assignments/${a.id}/${a.attachment.fileName}`, a.attachment) : a.attachment?.storagePath || null;
+    return {
+      id: a.id, course_id: a.courseId, title: a.title, due_date: a.dueDate, description: a.description,
+      resource_url: a.resourceUrl, resource_label: a.resourceLabel || null, attachment_path: attachmentPath,
+      attachment_name: a.attachment?.fileName || null, attachment_size: a.attachment?.fileSize || null, attachment_type: a.attachment?.fileType || null,
     };
-
-    // Save cleaned state back to localStorage
-    if (
-      sanitizedStudents.length !== rawStudents.length ||
-      parsed.meetingUrl !== meetingUrl ||
-      parsed.teacherAccount?.email !== teacherAccount.email
-    ) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanState));
-    }
-
-    return cleanState;
-  } catch {
-    return EMPTY_PORTAL_DATA;
+  }, 'assignments');
+  await changed(previous.materials, next.materials, async (m: StudyMaterial) => {
+    const storagePath = m.attachment?.fileData?.startsWith('data:') ? await uploadAttachment('course-materials', `materials/${m.courseId}/${m.id}/${m.attachment.fileName}`, m.attachment) : m.attachment?.storagePath || null;
+    return {
+      id: m.id, course_id: m.courseId, title: m.title, type: m.type, material_date: m.date,
+      meta_info: m.metaInfo, url: m.url, storage_path: storagePath, file_name: m.attachment?.fileName || null,
+      file_size: m.attachment?.fileSize || null, file_type: m.attachment?.fileType || null,
+    };
+  }, 'materials');
+  await changed(previous.submissions, next.submissions, async (s: any) => {
+    const storagePath = s.attachment?.fileData?.startsWith('data:') ? await uploadAttachment('student-submissions', `${s.studentId}/${s.id}.pdf`, s.attachment) : s.attachment?.storagePath || null;
+    return {
+      id: s.id, assignment_id: s.assignmentId || null, student_id: s.studentId, status: s.status,
+      submission_url: s.submissionUrl || null, submission_note: s.submissionNote || null,
+      submitted_at: isoDate(s.submittedAt), grade: s.grade || null, teacher_feedback: s.teacherFeedback || null,
+      storage_path: storagePath, file_name: s.attachment?.fileName || null, file_size: s.attachment?.fileSize || null,
+      file_type: 'application/pdf',
+    };
+  }, 'submissions');
+  await changed(previous.activityLogs, next.activityLogs, (l: StudentActivityLog) => ({
+    id: l.id, student_id: l.studentId, action: l.action, details: l.details || null, created_at: isoDate(l.timestamp),
+  }), 'activity_logs');
+  if (previous.meetingUrl !== next.meetingUrl || !same(previous.liveHero, next.liveHero)) {
+    const { error } = await supabase.from('app_settings').upsert({
+      id: 1, meeting_link: next.meetingUrl, live_hero: next.liveHero,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) throw error;
   }
 }
 
 export function usePortalStore() {
-  const [state, setState] = useState<PortalState>(sanitizeAndLoadInitialState);
-
+  const [state, setState] = useState<PortalState>(EMPTY_PORTAL_DATA);
+  const stateRef = useRef(state);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const persistState = useCallback((updater: (prev: PortalState) => PortalState) => {
-    setState((prev) => {
-      const next = updater(prev);
-      try {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      } catch {
-        // Safe fallback for quota limits
-      }
-      return next;
-    });
+    const previous = stateRef.current;
+    const next = updater(previous);
+    stateRef.current = next;
+    setState(next);
+    void syncChanges(previous, next).catch((error) => setLoadError(error instanceof Error ? error.message : 'Could not save changes.'));
   }, []);
 
   useEffect(() => {
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue) as PortalState;
-          if (parsed && typeof parsed === 'object') {
-            const rawStudents = Array.isArray(parsed.students) ? parsed.students : [];
-            const sanitizedStudents = rawStudents.filter((s) => {
-              if (!s || !s.email) return false;
-              const em = s.email.toLowerCase();
-              return !em.includes('@example.com') && !em.includes('@test.com');
-            });
-            const validStudentIds = new Set(sanitizedStudents.map((s) => s.id));
-
-            setState({
-              teacherAccount: parsed.teacherAccount || DEFAULT_TEACHER_CREDENTIALS,
-              meetingUrl: parsed.meetingUrl || parsed.liveHero?.meetingUrl || '',
-              courses: Array.isArray(parsed.courses) ? parsed.courses : [],
-              students: sanitizedStudents,
-              activityLogs: (Array.isArray(parsed.activityLogs) ? parsed.activityLogs : []).filter(
-                (l) => validStudentIds.has(l.studentId)
-              ),
-              submissions: (Array.isArray(parsed.submissions) ? parsed.submissions : []).filter(
-                (sub) => validStudentIds.has(sub.studentId)
-              ),
-              liveHero: parsed.liveHero ?? null,
-              sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
-              assignments: Array.isArray(parsed.assignments) ? parsed.assignments : [],
-              materials: Array.isArray(parsed.materials) ? parsed.materials : [],
-            });
-          }
-        } catch {
-          // Ignore external malformed payloads
+    let active = true;
+    const refresh = async () => {
+      if (active) setLoading(true);
+      try {
+        const next = await loadPortalState();
+        if (active) {
+          stateRef.current = next;
+          setState(next);
+          setLoadError(null);
         }
+      } catch (error) {
+        if (active) setLoadError(error instanceof Error ? error.message : 'Could not load portal data.');
+      } finally {
+        if (active) setLoading(false);
       }
     };
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      window.setTimeout(() => void refresh(), 0);
+    });
+    void refresh();
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
-  // ----------------------------------------------------
-  // Activity Logging Helper
-  // ----------------------------------------------------
-  const logActivity = useCallback(
-    (studentId: string, action: string, details?: string) => {
-      if (!studentId) return;
-      const newLog: StudentActivityLog = {
-        id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        studentId,
-        action,
-        details,
-        timestamp: new Date().toISOString(),
-      };
-      persistState((prev) => ({
-        ...prev,
-        activityLogs: [newLog, ...prev.activityLogs].slice(0, 300),
-      }));
-    },
-    [persistState]
-  );
-
-  // ----------------------------------------------------
-  // Teacher Credentials
-  // ----------------------------------------------------
-  const updateTeacherCredentials = useCallback(
-    (email: string, password: string) => {
-      persistState((prev) => ({
-        ...prev,
-        teacherAccount: {
-          ...prev.teacherAccount,
-          email: email.trim(),
-          password: password.trim(),
-        },
-      }));
-    },
-    [persistState]
-  );
-
-  // ----------------------------------------------------
-  // Student Registration & Strict Validation
-  // ----------------------------------------------------
-  const registerStudent = useCallback(
-    (data: {
-      name: string;
-      email: string;
-      password: string;
-      gradeLevel: string;
-      requestNote?: string;
-    }): { success: boolean; error?: string; student?: Student } => {
-      const emailValidation = validateStudentEmail(data.email);
-      if (!emailValidation.valid) {
-        return { success: false, error: emailValidation.error };
-      }
-
-      const normalizedEmail = data.email.trim().toLowerCase();
-      let createdStudent: Student | null = null;
-      let conflict = false;
-
-      persistState((prev) => {
-        if (prev.students.some((s) => s.email.toLowerCase() === normalizedEmail)) {
-          conflict = true;
-          return prev;
-        }
-
-        createdStudent = {
-          id: `std-${Date.now()}`,
-          name: data.name.trim(),
-          email: normalizedEmail,
-          password: data.password.trim(),
-          status: 'pending',
-          gradeLevel: data.gradeLevel.trim() || 'Student',
-          requestNote: data.requestNote?.trim(),
-          enrolledCourseIds: [],
-          createdAt: new Date().toISOString(),
-        };
-
-        const initialLog: StudentActivityLog = {
-          id: `log-${Date.now()}`,
-          studentId: createdStudent.id,
-          action: 'Account registration submitted',
-          details: 'Awaiting teacher verification and course enrollment',
-          timestamp: new Date().toISOString(),
-        };
-
-        return {
-          ...prev,
-          students: [createdStudent, ...prev.students],
-          activityLogs: [initialLog, ...prev.activityLogs],
-        };
-      });
-
-      if (conflict) {
-        return {
-          success: false,
-          error: 'An account with this email address already exists. Please sign in instead.',
-        };
-      }
-      return { success: true, student: createdStudent || undefined };
-    },
-    [persistState]
-  );
-
-  const approveStudent = useCallback(
-    (studentId: string, enrolledCourseIds: string[] = []) => {
-      persistState((prev) => {
-        const student = prev.students.find((s) => s.id === studentId);
-        if (!student) return prev;
-
-        const updatedStudent: Student = {
-          ...student,
-          status: 'approved',
-          enrolledCourseIds,
-        };
-
-        const approvalLog: StudentActivityLog = {
-          id: `log-${Date.now()}`,
-          studentId,
-          action: 'Account approved by Teacher',
-          details: `Enrolled in ${enrolledCourseIds.length} course batch(es)`,
-          timestamp: new Date().toISOString(),
-        };
-
-        return {
-          ...prev,
-          students: prev.students.map((s) => (s.id === studentId ? updatedStudent : s)),
-          activityLogs: [approvalLog, ...prev.activityLogs],
-        };
-      });
-    },
-    [persistState]
-  );
-
-  const rejectStudent = useCallback(
-    (studentId: string) => {
-      persistState((prev) => {
-        const rejectionLog: StudentActivityLog = {
-          id: `log-${Date.now()}`,
-          studentId,
-          action: 'Registration declined',
-          details: 'Reviewed by tutor',
-          timestamp: new Date().toISOString(),
-        };
-
-        return {
-          ...prev,
-          students: prev.students.map((s) =>
-            s.id === studentId ? { ...s, status: 'rejected' } : s
-          ),
-          activityLogs: [rejectionLog, ...prev.activityLogs],
-        };
-      });
-    },
-    [persistState]
-  );
-
-  const changeStudentStatus = useCallback(
-    (studentId: string, status: StudentStatus) => {
-      persistState((prev) => ({
-        ...prev,
-        students: prev.students.map((s) => (s.id === studentId ? { ...s, status } : s)),
-      }));
-    },
-    [persistState]
-  );
-
-  const addStudent = useCallback(
-    (studentData: Omit<Student, 'id' | 'createdAt'>) => {
-      const newStudent: Student = {
-        ...studentData,
-        id: `std-${Date.now()}`,
-        status: studentData.status || 'approved',
-        password: studentData.password || 'password123',
-        enrolledCourseIds: studentData.enrolledCourseIds || [],
-        createdAt: new Date().toISOString(),
-      };
-
-      const initialLog: StudentActivityLog = {
-        id: `log-${Date.now()}`,
-        studentId: newStudent.id,
-        action: 'Account Created',
-        details: `Student profile enrolled by tutor (${newStudent.gradeLevel})`,
-        timestamp: new Date().toISOString(),
-      };
-
-      persistState((prev) => ({
-        ...prev,
-        students: [...prev.students, newStudent],
-        activityLogs: [initialLog, ...prev.activityLogs],
-      }));
-      return newStudent;
-    },
-    [persistState]
-  );
-
-  const updateStudent = useCallback(
-    (id: string, updates: Partial<Omit<Student, 'id' | 'createdAt'>>) => {
-      persistState((prev) => ({
-        ...prev,
-        students: prev.students.map((s) => (s.id === id ? { ...s, ...updates } : s)),
-      }));
-    },
-    [persistState]
-  );
-
-  const deleteStudent = useCallback(
-    (id: string) => {
-      persistState((prev) => ({
-        ...prev,
-        students: prev.students.filter((s) => s.id !== id),
-        activityLogs: prev.activityLogs.filter((l) => l.studentId !== id),
-        submissions: prev.submissions.filter((sub) => sub.studentId !== id),
-      }));
-    },
-    [persistState]
-  );
-
-  const toggleStudentEnrollment = useCallback(
-    (studentId: string, courseId: string) => {
-      persistState((prev) => {
-        const targetStudent = prev.students.find((s) => s.id === studentId);
-        const course = prev.courses.find((c) => c.id === courseId);
-        if (!targetStudent) return prev;
-
-        const courseTitle = course ? course.title : 'Course';
-        const isEnrolled = targetStudent.enrolledCourseIds.includes(courseId);
-        const nextCourseIds = isEnrolled
-          ? targetStudent.enrolledCourseIds.filter((cid) => cid !== courseId)
-          : [...targetStudent.enrolledCourseIds, courseId];
-
-        const actionLabel = isEnrolled
-          ? `Unenrolled from ${courseTitle}`
-          : `Enrolled in ${courseTitle}`;
-
-        const newLog: StudentActivityLog = {
-          id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          studentId,
-          action: actionLabel,
-          details: 'Updated by tutor',
-          timestamp: new Date().toISOString(),
-        };
-
-        return {
-          ...prev,
-          students: prev.students.map((s) =>
-            s.id === studentId ? { ...s, enrolledCourseIds: nextCourseIds } : s
-          ),
-          activityLogs: [newLog, ...prev.activityLogs],
-        };
-      });
-    },
-    [persistState]
-  );
-
-  // ----------------------------------------------------
-  // Live Class & Hero Controller
-  // ----------------------------------------------------
-  const publishLiveHero = useCallback(
-    (hero: Omit<LiveSessionHero, 'updatedAt'> | null) => {
-      if (!hero) {
-        persistState((prev) => ({
-          ...prev,
-          liveHero: null,
-        }));
-        return;
-      }
-
-      const normalizedUrl = normalizeExternalUrl(hero.meetingUrl);
-      persistState((prev) => ({
-        ...prev,
-        liveHero: {
-          ...hero,
-          meetingUrl: normalizedUrl,
-          updatedAt: new Date().toISOString(),
-        },
-        sessions: hero.sessionId
-          ? prev.sessions.map((s) =>
-              s.id === hero.sessionId
-                ? {
-                    ...s,
-                    meetingUrl: normalizedUrl,
-                    status: hero.status === 'live' ? 'Live' : s.status,
-                  }
-                : s
-            )
-          : prev.sessions,
-      }));
-    },
-    [persistState]
-  );
-
-  // ----------------------------------------------------
-  // Courses Management
-  // ----------------------------------------------------
-  const addCourse = useCallback(
-    (courseData: Omit<Course, 'id'>) => {
-      const newCourse: Course = {
-        ...courseData,
-        id: `course-${Date.now()}`,
-      };
-      persistState((prev) => ({
-        ...prev,
-        courses: [...prev.courses, newCourse],
-      }));
-      return newCourse;
-    },
-    [persistState]
-  );
-
-  const updateCourse = useCallback(
-    (id: string, updates: Partial<Omit<Course, 'id'>>) => {
-      persistState((prev) => ({
-        ...prev,
-        courses: prev.courses.map((c) => (c.id === id ? { ...c, ...updates } : c)),
-      }));
-    },
-    [persistState]
-  );
-
-  const deleteCourse = useCallback(
-    (id: string) => {
-      persistState((prev) => ({
-        ...prev,
-        courses: prev.courses.filter((c) => c.id !== id),
-        students: prev.students.map((s) => ({
-          ...s,
-          enrolledCourseIds: s.enrolledCourseIds.filter((cid) => cid !== id),
-        })),
-        sessions: prev.sessions.filter((sess) => sess.courseId !== id),
-        assignments: prev.assignments.filter((asg) => asg.courseId !== id),
-        materials: prev.materials.filter((mat) => mat.courseId !== id),
-        liveHero: prev.liveHero?.courseId === id ? null : prev.liveHero,
-      }));
-    },
-    [persistState]
-  );
-
-  // ----------------------------------------------------
-  // Schedule Sessions
-  // ----------------------------------------------------
-  const addSession = useCallback(
-    (session: Omit<ScheduleSession, 'id'>) => {
-      const newSession: ScheduleSession = {
-        ...session,
-        meetingUrl: normalizeExternalUrl(session.meetingUrl),
-        id: `sess-${Date.now()}`,
-      };
-      persistState((prev) => ({
-        ...prev,
-        sessions: [...prev.sessions, newSession].sort((a, b) =>
-          `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`)
-        ),
-      }));
-      return newSession;
-    },
-    [persistState]
-  );
-
-  const updateSession = useCallback(
-    (id: string, updates: Partial<Omit<ScheduleSession, 'id'>>) => {
-      persistState((prev) => ({
-        ...prev,
-        sessions: prev.sessions
-          .map((s) =>
-            s.id === id
-              ? {
-                  ...s,
-                  ...updates,
-                  meetingUrl:
-                    updates.meetingUrl !== undefined
-                      ? normalizeExternalUrl(updates.meetingUrl)
-                      : s.meetingUrl,
-                }
-              : s
-          )
-          .sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`)),
-      }));
-    },
-    [persistState]
-  );
-
-  const deleteSession = useCallback(
-    (id: string) => {
-      persistState((prev) => ({
-        ...prev,
-        sessions: prev.sessions.filter((s) => s.id !== id),
-      }));
-    },
-    [persistState]
-  );
-
-  // ----------------------------------------------------
-  // Assignments & Submissions
-  // ----------------------------------------------------
-  const addAssignment = useCallback(
-    (assignment: Omit<Assignment, 'id'>) => {
-      const newAssignment: Assignment = {
-        ...assignment,
-        resourceUrl: normalizeExternalUrl(assignment.resourceUrl),
-        id: `asg-${Date.now()}`,
-      };
-      persistState((prev) => ({
-        ...prev,
-        assignments: [newAssignment, ...prev.assignments],
-      }));
-      return newAssignment;
-    },
-    [persistState]
-  );
-
-  const updateAssignment = useCallback(
-    (id: string, updates: Partial<Omit<Assignment, 'id'>>) => {
-      persistState((prev) => ({
-        ...prev,
-        assignments: prev.assignments.map((a) =>
-          a.id === id
-            ? {
-                ...a,
-                ...updates,
-                resourceUrl:
-                  updates.resourceUrl !== undefined
-                    ? normalizeExternalUrl(updates.resourceUrl)
-                    : a.resourceUrl,
-              }
-            : a
-        ),
-      }));
-    },
-    [persistState]
-  );
-
-  const deleteAssignment = useCallback(
-    (id: string) => {
-      persistState((prev) => ({
-        ...prev,
-        assignments: prev.assignments.filter((a) => a.id !== id),
-        submissions: prev.submissions.filter((sub) => sub.assignmentId !== id),
-      }));
-    },
-    [persistState]
-  );
-
-  const submitAssignment = useCallback(
-    (
-      assignmentId: string,
-      studentId: string,
-      submissionUrl: string,
-      submissionNote: string,
-      attachment?: UploadedFileMeta
-    ) => {
-      const normalizedUrl = normalizeExternalUrl(submissionUrl);
-      const submittedDate = new Date().toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
-
-      persistState((prev) => {
-        const assignment = prev.assignments.find((a) => a.id === assignmentId);
-        const existingIdx = prev.submissions.findIndex(
-          (sub) => sub.assignmentId === assignmentId && sub.studentId === studentId
-        );
-
-        let nextSubmissions = [...prev.submissions];
-        if (existingIdx >= 0) {
-          nextSubmissions[existingIdx] = {
-            ...nextSubmissions[existingIdx],
-            status: 'Submitted',
-            submissionUrl: normalizedUrl,
-            submissionNote: submissionNote.trim(),
-            submittedAt: submittedDate,
-            attachment: attachment || nextSubmissions[existingIdx].attachment,
-          };
-        } else {
-          nextSubmissions.push({
-            id: `sub-${Date.now()}`,
-            assignmentId,
-            studentId,
-            status: 'Submitted',
-            submissionUrl: normalizedUrl,
-            submissionNote: submissionNote.trim(),
-            submittedAt: submittedDate,
-            attachment,
-          });
-        }
-
-        const newLog: StudentActivityLog = {
-          id: `log-${Date.now()}`,
-          studentId,
-          action: 'Marked Assignment as Submitted',
-          details: assignment ? assignment.title : 'Coursework',
-          timestamp: new Date().toISOString(),
-        };
-
-        return {
-          ...prev,
-          submissions: nextSubmissions,
-          activityLogs: [newLog, ...prev.activityLogs],
-        };
-      });
-    },
-    [persistState]
-  );
-
-  const retractSubmission = useCallback(
-    (assignmentId: string, studentId: string) => {
-      persistState((prev) => {
-        const assignment = prev.assignments.find((a) => a.id === assignmentId);
-        const nextSubmissions = prev.submissions.filter(
-          (sub) => !(sub.assignmentId === assignmentId && sub.studentId === studentId)
-        );
-
-        const newLog: StudentActivityLog = {
-          id: `log-${Date.now()}`,
-          studentId,
-          action: 'Retracted Assignment Submission',
-          details: assignment ? assignment.title : 'Coursework',
-          timestamp: new Date().toISOString(),
-        };
-
-        return {
-          ...prev,
-          submissions: nextSubmissions,
-          activityLogs: [newLog, ...prev.activityLogs],
-        };
-      });
-    },
-    [persistState]
-  );
-
-  const gradeAssignment = useCallback(
-    (assignmentId: string, studentId: string, grade: string, teacherFeedback: string) => {
-      persistState((prev) => {
-        const assignment = prev.assignments.find((a) => a.id === assignmentId);
-        const existingIdx = prev.submissions.findIndex(
-          (sub) => sub.assignmentId === assignmentId && sub.studentId === studentId
-        );
-
-        let nextSubmissions = [...prev.submissions];
-        if (existingIdx >= 0) {
-          nextSubmissions[existingIdx] = {
-            ...nextSubmissions[existingIdx],
-            status: 'Graded',
-            grade: grade.trim(),
-            teacherFeedback: teacherFeedback.trim(),
-          };
-        } else {
-          nextSubmissions.push({
-            id: `sub-${Date.now()}`,
-            assignmentId,
-            studentId,
-            status: 'Graded',
-            grade: grade.trim(),
-            teacherFeedback: teacherFeedback.trim(),
-            submittedAt: 'Teacher Evaluated',
-          });
-        }
-
-        const newLog: StudentActivityLog = {
-          id: `log-${Date.now()}`,
-          studentId,
-          action: `Graded Assignment: ${assignment ? assignment.title : 'Coursework'}`,
-          details: `Score: ${grade.trim()}`,
-          timestamp: new Date().toISOString(),
-        };
-
-        return {
-          ...prev,
-          submissions: nextSubmissions,
-          activityLogs: [newLog, ...prev.activityLogs],
-        };
-      });
-    },
-    [persistState]
-  );
-
-  // ----------------------------------------------------
-  // Study Materials
-  // ----------------------------------------------------
-  const addMaterial = useCallback(
-    (material: Omit<StudyMaterial, 'id'>) => {
-      const newMaterial: StudyMaterial = {
-        ...material,
-        url: normalizeExternalUrl(material.url),
-        id: `mat-${Date.now()}`,
-      };
-      persistState((prev) => ({
-        ...prev,
-        materials: [newMaterial, ...prev.materials],
-      }));
-      return newMaterial;
-    },
-    [persistState]
-  );
-
-  const deleteMaterial = useCallback(
-    (id: string) => {
-      persistState((prev) => ({
-        ...prev,
-        materials: prev.materials.filter((m) => m.id !== id),
-      }));
-    },
-    [persistState]
-  );
-
-  // ----------------------------------------------------
-  // Classroom Permanent Meeting Link
-  // ----------------------------------------------------
-  const saveMeetingLink = useCallback(
-    (rawUrl: string) => {
-      const normalized = normalizeExternalUrl(rawUrl);
-      persistState((prev) => ({
-        ...prev,
-        meetingUrl: normalized,
-        liveHero: prev.liveHero ? { ...prev.liveHero, meetingUrl: normalized } : null,
-      }));
-    },
-    [persistState]
-  );
-
-  // ----------------------------------------------------
-  // Wipe All Data
-  // ----------------------------------------------------
-  const resetAllData = useCallback(() => {
-    persistState(() => EMPTY_PORTAL_DATA);
+  const logActivity = useCallback((studentId: string, action: string, details?: string) => {
+    if (!studentId) return;
+    const entry: StudentActivityLog = { id: id('log'), studentId, action, details, timestamp: new Date().toISOString() };
+    persistState((prev) => ({ ...prev, activityLogs: [entry, ...prev.activityLogs].slice(0, 300) }));
   }, [persistState]);
+  const registerStudent = useCallback(async (data: { name: string; email: string; password: string; gradeLevel: string; requestNote?: string }) => {
+    const { data: result, error } = await supabase.auth.signUp({
+      email: data.email.trim().toLowerCase(), password: data.password,
+      options: {
+        emailRedirectTo: import.meta.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/`,
+        data: { full_name: data.name.trim(), grade_level: data.gradeLevel.trim(), request_note: data.requestNote?.trim() || '' },
+      },
+    });
+    if (error) {
+      if (error.message.toLowerCase().includes('already registered')) return { success: false, error: 'Unable to register with these details. If you already have an account, try signing in.' };
+      if (error.message.toLowerCase().includes('password')) return { success: false, error: 'Choose a stronger password that meets the account security requirements.' };
+      return { success: false, error: 'Registration could not be completed. Check your details and try again.' };
+    }
+    return { success: true, confirmationRequired: !result.session };
+  }, []);
+  const approveStudent = useCallback((studentId: string, enrolledCourseIds: string[] = []) => persistState((prev) => ({
+    ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, status: 'approved', enrolledCourseIds } : s),
+    activityLogs: [{ id: id('log'), studentId, action: 'Account approved by Teacher', details: `Enrolled in ${enrolledCourseIds.length} course batch(es)`, timestamp: new Date().toISOString() }, ...prev.activityLogs],
+  })), [persistState]);
+  const rejectStudent = useCallback((studentId: string) => persistState((prev) => ({
+    ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, status: 'rejected' } : s),
+    activityLogs: [{ id: id('log'), studentId, action: 'Registration declined', details: 'Reviewed by tutor', timestamp: new Date().toISOString() }, ...prev.activityLogs],
+  })), [persistState]);
+  const changeStudentStatus = useCallback((studentId: string, status: StudentStatus) => persistState((prev) => ({ ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, status } : s) })), [persistState]);
+  const addStudent = useCallback(async (studentData: Omit<Student, 'id' | 'createdAt'>, initialPassword: string) => {
+    const authClient = createIsolatedAuthClient();
+    const { data, error } = await authClient.auth.signUp({
+      email: studentData.email.trim().toLowerCase(),
+      password: initialPassword,
+      options: {
+        emailRedirectTo: import.meta.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/`,
+        data: { full_name: studentData.name.trim(), grade_level: studentData.gradeLevel, request_note: studentData.notes || '' },
+      },
+    });
+    if (error || !data.user) throw new Error('Unable to create this account. Verify the email is not already registered and the password meets the security requirements.');
+    const created: Student = {
+      id: data.user.id, name: studentData.name.trim(), email: studentData.email.trim().toLowerCase(),
+      status: 'pending', gradeLevel: studentData.gradeLevel, notes: studentData.notes,
+      requestNote: studentData.requestNote, enrolledCourseIds: [], createdAt: new Date().toISOString(),
+    };
+    const next = { ...stateRef.current, students: [created, ...stateRef.current.students] };
+    stateRef.current = next;
+    setState(next);
+    return created;
+  }, []);
+  const updateStudent = useCallback((studentId: string, updates: Partial<Omit<Student, 'id' | 'createdAt'>>) => persistState((prev) => ({ ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, ...updates } : s) })), [persistState]);
+  const deleteStudent = useCallback((studentId: string) => persistState((prev) => ({ ...prev, students: prev.students.filter((s) => s.id !== studentId), activityLogs: prev.activityLogs.filter((l) => l.studentId !== studentId), submissions: prev.submissions.filter((s) => s.studentId !== studentId) })), [persistState]);
+  const toggleStudentEnrollment = useCallback((studentId: string, courseId: string) => persistState((prev) => ({
+    ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, enrolledCourseIds: s.enrolledCourseIds.includes(courseId) ? s.enrolledCourseIds.filter((id) => id !== courseId) : [...s.enrolledCourseIds, courseId] } : s),
+  })), [persistState]);
+  const publishLiveHero = useCallback((hero: Omit<LiveSessionHero, 'updatedAt'> | null) => persistState((prev) => ({
+    ...prev, liveHero: hero ? { ...hero, meetingUrl: normalizeExternalUrl(hero.meetingUrl), updatedAt: new Date().toISOString() } : null,
+    sessions: hero?.sessionId ? prev.sessions.map((session) => session.id === hero.sessionId ? { ...session, meetingUrl: normalizeExternalUrl(hero.meetingUrl), status: hero.status === 'live' ? 'Live' : session.status } : session) : prev.sessions,
+  })), [persistState]);
+  const addCourse = useCallback((course: Omit<Course, 'id'>) => {
+    const next = { ...course, id: id('course') }; persistState((prev) => ({ ...prev, courses: [...prev.courses, next] })); return next;
+  }, [persistState]);
+  const updateCourse = useCallback((courseId: string, updates: Partial<Omit<Course, 'id'>>) => persistState((prev) => ({ ...prev, courses: prev.courses.map((c) => c.id === courseId ? { ...c, ...updates } : c) })), [persistState]);
+  const deleteCourse = useCallback((courseId: string) => persistState((prev) => ({
+    ...prev, courses: prev.courses.filter((c) => c.id !== courseId), students: prev.students.map((s) => ({ ...s, enrolledCourseIds: s.enrolledCourseIds.filter((id) => id !== courseId) })),
+    sessions: prev.sessions.filter((s) => s.courseId !== courseId), assignments: prev.assignments.filter((a) => a.courseId !== courseId), materials: prev.materials.filter((m) => m.courseId !== courseId),
+    liveHero: prev.liveHero?.courseId === courseId ? null : prev.liveHero,
+  })), [persistState]);
+  const addSession = useCallback((session: Omit<ScheduleSession, 'id'>) => {
+    const next = { ...session, id: id('session'), meetingUrl: normalizeExternalUrl(session.meetingUrl) }; persistState((prev) => ({ ...prev, sessions: sortSessions([...prev.sessions, next]) })); return next;
+  }, [persistState]);
+  const updateSession = useCallback((sessionId: string, updates: Partial<Omit<ScheduleSession, 'id'>>) => persistState((prev) => ({ ...prev, sessions: sortSessions(prev.sessions.map((s) => s.id === sessionId ? { ...s, ...updates, meetingUrl: updates.meetingUrl === undefined ? s.meetingUrl : normalizeExternalUrl(updates.meetingUrl) } : s)) })), [persistState]);
+  const deleteSession = useCallback((sessionId: string) => persistState((prev) => ({ ...prev, sessions: prev.sessions.filter((s) => s.id !== sessionId) })), [persistState]);
+  const addAssignment = useCallback((assignment: Omit<Assignment, 'id'>) => {
+    const next = { ...assignment, id: id('assignment'), resourceUrl: normalizeExternalUrl(assignment.resourceUrl) }; persistState((prev) => ({ ...prev, assignments: [next, ...prev.assignments] })); return next;
+  }, [persistState]);
+  const updateAssignment = useCallback((assignmentId: string, updates: Partial<Omit<Assignment, 'id'>>) => persistState((prev) => ({ ...prev, assignments: prev.assignments.map((a) => a.id === assignmentId ? { ...a, ...updates } : a) })), [persistState]);
+  const deleteAssignment = useCallback((assignmentId: string) => persistState((prev) => ({ ...prev, assignments: prev.assignments.filter((a) => a.id !== assignmentId), submissions: prev.submissions.filter((s) => s.assignmentId !== assignmentId) })), [persistState]);
+  const submitAssignment = useCallback((assignmentId: string, studentId: string, submissionUrl: string, submissionNote: string, attachment?: UploadedFileMeta) => persistState((prev) => {
+    const existing = prev.submissions.find((s) => s.assignmentId === assignmentId && s.studentId === studentId);
+    const next = { id: existing?.id || id('submission'), assignmentId, studentId, status: 'Submitted' as const, submissionUrl: normalizeExternalUrl(submissionUrl), submissionNote: submissionNote.trim(), submittedAt: new Date().toISOString(), attachment: attachment || existing?.attachment };
+    return { ...prev, submissions: [next, ...prev.submissions.filter((s) => s.id !== existing?.id)], activityLogs: [{ id: id('log'), studentId, action: 'Marked Assignment as Submitted', details: prev.assignments.find((a) => a.id === assignmentId)?.title || 'Coursework', timestamp: new Date().toISOString() }, ...prev.activityLogs] };
+  }), [persistState]);
+  const retractSubmission = useCallback((assignmentId: string, studentId: string) => persistState((prev) => ({ ...prev, submissions: prev.submissions.filter((s) => !(s.assignmentId === assignmentId && s.studentId === studentId)) })), [persistState]);
+  const gradeAssignment = useCallback((assignmentId: string, studentId: string, grade: string, teacherFeedback: string) => persistState((prev) => {
+    const existing = prev.submissions.find((s) => s.assignmentId === assignmentId && s.studentId === studentId);
+    const next = { id: existing?.id || id('submission'), assignmentId, studentId, status: 'Graded' as const, ...existing, grade: grade.trim(), teacherFeedback: teacherFeedback.trim(), submittedAt: existing?.submittedAt || new Date().toISOString() };
+    return { ...prev, submissions: [next, ...prev.submissions.filter((s) => s.id !== existing?.id)], activityLogs: [{ id: id('log'), studentId, action: `Graded Assignment: ${prev.assignments.find((a) => a.id === assignmentId)?.title || 'Coursework'}`, details: `Score: ${grade.trim()}`, timestamp: new Date().toISOString() }, ...prev.activityLogs] };
+  }), [persistState]);
+  const addMaterial = useCallback((material: Omit<StudyMaterial, 'id'>) => {
+    const next = { ...material, id: id('material'), url: normalizeExternalUrl(material.url) }; persistState((prev) => ({ ...prev, materials: [next, ...prev.materials] })); return next;
+  }, [persistState]);
+  const deleteMaterial = useCallback((materialId: string) => persistState((prev) => ({ ...prev, materials: prev.materials.filter((m) => m.id !== materialId) })), [persistState]);
+  const saveMeetingLink = useCallback((rawUrl: string) => persistState((prev) => ({ ...prev, meetingUrl: normalizeExternalUrl(rawUrl), liveHero: prev.liveHero ? { ...prev.liveHero, meetingUrl: normalizeExternalUrl(rawUrl) } : null })), [persistState]);
+  const resetAllData = useCallback(() => persistState(() => EMPTY_PORTAL_DATA), [persistState]);
 
-  return {
-    state,
-    logActivity,
-    updateTeacherCredentials,
-    saveMeetingLink,
-    registerStudent,
-    approveStudent,
-    rejectStudent,
-    changeStudentStatus,
-    publishLiveHero,
-    addStudent,
-    updateStudent,
-    deleteStudent,
-    toggleStudentEnrollment,
-    addCourse,
-    updateCourse,
-    deleteCourse,
-    addSession,
-    updateSession,
-    deleteSession,
-    addAssignment,
-    updateAssignment,
-    deleteAssignment,
-    submitAssignment,
-    retractSubmission,
-    gradeAssignment,
-    addMaterial,
-    deleteMaterial,
-    resetAllData,
-  };
+  return { state, loading, loadError, logActivity, registerStudent, approveStudent, rejectStudent, changeStudentStatus, addStudent, updateStudent, deleteStudent, toggleStudentEnrollment, publishLiveHero, addCourse, updateCourse, deleteCourse, addSession, updateSession, deleteSession, addAssignment, updateAssignment, deleteAssignment, submitAssignment, retractSubmission, gradeAssignment, addMaterial, deleteMaterial, saveMeetingLink, resetAllData };
 }

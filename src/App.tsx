@@ -12,14 +12,13 @@ import { StudentDashboard } from './components/student/StudentDashboard';
 import { StudentSchedule } from './components/student/StudentSchedule';
 import { TeacherAdmin } from './components/teacher/TeacherAdmin';
 import { usePortalStore } from './hooks/usePortalStore';
-import { Student, StudentTab, TeacherTab, UserSession } from './types/portal';
-
-const SESSION_STORAGE_KEY = 'mathsbyabdullah_user_session_v1';
-const LEGACY_STORAGE_KEY = 'apex_tutoring_user_session_v1';
+import { StudentTab, TeacherTab, UserSession } from './types/portal';
+import { supabase } from './lib/supabase';
 
 export default function App() {
   const {
     state,
+    loading: portalLoading,
     logActivity,
     saveMeetingLink,
     registerStudent,
@@ -48,27 +47,8 @@ export default function App() {
     resetAllData,
   } = usePortalStore();
 
-  // Session state with Remember Me check: checks sessionStorage first (session-only), then localStorage (persistent)
-  const [session, setSession] = useState<UserSession>(() => {
-    try {
-      // 1. Check session-only storage
-      const sessionRaw = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
-      if (sessionRaw) {
-        return JSON.parse(sessionRaw) as UserSession;
-      }
-      // 2. Check persistent localStorage
-      const localRaw = window.localStorage.getItem(SESSION_STORAGE_KEY);
-      if (localRaw) {
-        return JSON.parse(localRaw) as UserSession;
-      }
-      // Clean legacy keys if present
-      window.localStorage.removeItem(LEGACY_STORAGE_KEY);
-      window.sessionStorage.removeItem(LEGACY_STORAGE_KEY);
-    } catch {
-      // ignore
-    }
-    return null;
-  });
+  const [session, setSession] = useState<UserSession>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   const [authMode, setAuthMode] = useState<'landing' | 'student-signin' | 'student-signup' | 'teacher'>('landing');
   const [studentTab, setStudentTab] = useState<StudentTab>('dashboard');
@@ -86,53 +66,75 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [toastMessage]);
 
-  const saveSession = useCallback((nextSession: UserSession, rememberMe: boolean = true) => {
-    setSession(nextSession);
-    try {
-      if (nextSession) {
-        if (rememberMe) {
-          window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
-          window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
-        } else {
-          window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
-          window.localStorage.removeItem(SESSION_STORAGE_KEY);
-        }
-      } else {
-        window.localStorage.removeItem(SESSION_STORAGE_KEY);
-        window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
-        window.localStorage.removeItem(LEGACY_STORAGE_KEY);
-        window.sessionStorage.removeItem(LEGACY_STORAGE_KEY);
-      }
-    } catch {
-      // ignore
+  const loadAuthenticatedRole = useCallback(async (userId: string) => {
+    const { data: profile, error } = await supabase.from('profiles')
+      .select('id,role,status,full_name').eq('id', userId).maybeSingle();
+    if (error || !profile) {
+      setSession(null);
+      return;
     }
+    setSession(profile.role === 'teacher' ? { role: 'teacher' } : { role: 'student', studentId: profile.id });
   }, []);
 
-  const handleSignOut = useCallback(() => {
-    saveSession(null);
-    notify('Signed out of MathsByAbdullah');
-  }, [saveSession, notify]);
-
-  const handleStudentLogin = useCallback(
-    (student: Student, rememberMe: boolean = true) => {
-      saveSession({ role: 'student', studentId: student.id }, rememberMe);
-      if (student.status === 'approved') {
-        logActivity(student.id, 'Logged In', 'Student session started');
-        notify(`Welcome back, ${student.name.split(' ')[0]}!`);
-      } else if (student.status === 'pending') {
-        notify('Account pending verification. Opening status screen...');
+  useEffect(() => {
+    let active = true;
+    const restore = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (!active) return;
+      if (error || !data.session) {
+        setSession(null);
+        setAuthLoading(false);
+        return;
       }
-    },
-    [saveSession, logActivity, notify]
-  );
+      await loadAuthenticatedRole(data.session.user.id);
+      if (active) setAuthLoading(false);
+    };
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, authSession) => {
+      window.setTimeout(() => {
+        if (!active) return;
+        if (authSession) void loadAuthenticatedRole(authSession.user.id).finally(() => setAuthLoading(false));
+        else { setSession(null); setAuthLoading(false); }
+      }, 0);
+    });
+    void restore();
+    return () => { active = false; authListener.subscription.unsubscribe(); };
+  }, [loadAuthenticatedRole]);
 
-  const handleTeacherLogin = useCallback(
-    (rememberMe: boolean = true) => {
-      saveSession({ role: 'teacher' }, rememberMe);
-      notify('Welcome Abdullah! Teacher Admin active.');
-    },
-    [saveSession, notify]
-  );
+  const handleSignOut = useCallback(async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    notify('Signed out of MathsByAbdullah');
+  }, [notify]);
+
+  const authenticate = useCallback(async (email: string, password: string, expectedRole: 'student' | 'teacher') => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error || !data.user) {
+      const message = error?.message.toLowerCase() || '';
+      return { error: message.includes('email not confirmed') ? 'Please confirm your email address before signing in.' : 'Invalid email or password.' };
+    }
+    const { data: profile, error: profileError } = await supabase.from('profiles')
+      .select('id,role,status,full_name').eq('id', data.user.id).maybeSingle();
+    if (profileError || !profile || profile.role !== expectedRole) {
+      await supabase.auth.signOut();
+      return { error: expectedRole === 'teacher' ? 'Invalid email or password.' : 'Invalid email or password.' };
+    }
+    setSession(expectedRole === 'teacher' ? { role: 'teacher' } : { role: 'student', studentId: profile.id });
+    setAuthLoading(false);
+    if (expectedRole === 'student') {
+      if (profile.status === 'approved') {
+        logActivity(profile.id, 'Logged In', 'Student session started');
+        notify(`Welcome back, ${profile.full_name.split(' ')[0]}!`);
+      } else {
+        notify('Your account is awaiting teacher approval.');
+      }
+    } else {
+      notify('Welcome Abdullah. Teacher Admin active.');
+    }
+    return {};
+  }, [logActivity, notify]);
+
+  const handleStudentLogin = useCallback((email: string, password: string) => authenticate(email, password, 'student'), [authenticate]);
+  const handleTeacherLogin = useCallback((email: string, password: string) => authenticate(email, password, 'teacher'), [authenticate]);
 
   // Current logged in student
   const activeStudent = useMemo(() => {

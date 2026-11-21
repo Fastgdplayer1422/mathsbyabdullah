@@ -2,7 +2,6 @@ import { PortalState } from '../types/portal';
 
 export const DEFAULT_TEACHER_CREDENTIALS = {
   email: 'aa6993248@gmail.com',
-  password: 'admin1234',
   name: 'Abdullah',
 };
 

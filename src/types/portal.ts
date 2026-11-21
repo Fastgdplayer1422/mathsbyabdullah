@@ -19,13 +19,13 @@ export interface UploadedFileMeta {
   fileType: string; // MIME type or extension
   fileData: string; // Base64 data URL
   uploadedAt?: string;
+  storagePath?: string;
 }
 
 export interface Student {
   id: string;
   name: string;
   email: string;
-  password: string; // Plaintext or hash for client-side authentication
   status: StudentStatus;
   gradeLevel: string; // e.g., "Year 11 / IGCSE", "AS Level", "Grade 10"
   notes?: string;
@@ -133,7 +133,6 @@ export interface StudyMaterial {
 
 export interface TeacherAccount {
   email: string;
-  password: string;
   name: string;
 }
 

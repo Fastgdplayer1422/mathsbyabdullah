@@ -8,7 +8,7 @@ import {
   ShieldCheck,
   User,
 } from 'lucide-react';
-import { PortalState, Student } from '../../types/portal';
+import { PortalState } from '../../types/portal';
 import { validateStudentEmail } from '../../utils/formatters';
 import { BrandMonogram } from '../BrandMonogram';
 
@@ -16,15 +16,15 @@ interface AuthPageProps {
   state: PortalState;
   initialMode?: 'student-signin' | 'student-signup' | 'teacher';
   onBackToLanding?: () => void;
-  onStudentLogin: (student: Student, rememberMe: boolean) => void;
+  onStudentLogin: (email: string, password: string, rememberMe: boolean) => Promise<{ error?: string }>;
   onStudentRegister: (data: {
     name: string;
     email: string;
     password: string;
     gradeLevel: string;
     requestNote?: string;
-  }) => { success: boolean; error?: string; student?: Student };
-  onTeacherLogin: (rememberMe: boolean) => void;
+  }) => Promise<{ success: boolean; error?: string; confirmationRequired?: boolean }>;
+  onTeacherLogin: (email: string, password: string, rememberMe: boolean) => Promise<{ error?: string }>;
 }
 
 export const AuthPage: React.FC<AuthPageProps> = ({
@@ -63,28 +63,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
   // Form error state
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const handleStudentSignIn = (e: React.FormEvent) => {
+  const handleStudentSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
-
-    const emailNorm = studentEmail.trim().toLowerCase();
-    const student = state.students.find((s) => s.email.toLowerCase() === emailNorm);
-
-    if (!student) {
-      setErrorMessage('No student account found with this email. Please check your spelling or register below.');
-      return;
-    }
-
-    if (student.password !== studentPassword.trim()) {
-      setErrorMessage('Incorrect password. Please verify and try again.');
-      return;
-    }
-
-    onStudentLogin(student, studentRememberMe);
+    setSuccessMessage(null);
+    const result = await onStudentLogin(studentEmail.trim().toLowerCase(), studentPassword, studentRememberMe);
+    if (result.error) setErrorMessage(result.error);
   };
 
-  const handleStudentSignUp = (e: React.FormEvent) => {
+  const handleStudentSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -100,43 +89,36 @@ export const AuthPage: React.FC<AuthPageProps> = ({
       return;
     }
 
-    if (regPassword.length < 4) {
-      setErrorMessage('Password must be at least 4 characters long.');
+    if (regPassword.length < 8) {
+      setErrorMessage('Password must be at least 8 characters long.');
       return;
     }
 
-    const res = onStudentRegister({
+    const res = await onStudentRegister({
       name: regName.trim(),
-      email: regEmail.trim(),
-      password: regPassword.trim(),
+      email: regEmail.trim().toLowerCase(),
+      password: regPassword,
       gradeLevel: regGrade.trim(),
       requestNote: regNote.trim(),
     });
 
     if (!res.success) {
-      setErrorMessage(res.error || 'Failed to submit registration.');
+      setErrorMessage(res.error || 'Unable to submit registration. Please try again.');
       return;
     }
 
-    if (res.student) {
-      // Immediately transition student to Pending Approval screen
-      onStudentLogin(res.student, true);
-    }
+    setSuccessMessage(res.confirmationRequired
+      ? 'Check your email to confirm your account. Once confirmed, sign in to see your approval status.'
+      : 'Registration submitted. Your account is pending teacher approval.');
+    setStudentMode('signin');
   };
 
-  const handleTeacherSignIn = (e: React.FormEvent) => {
+  const handleTeacherSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
-
-    const emailNorm = teacherEmail.trim().toLowerCase();
-    const expectedEmail = state.teacherAccount.email.trim().toLowerCase();
-
-    if (emailNorm !== expectedEmail || teacherPassword.trim() !== state.teacherAccount.password) {
-      setErrorMessage('Invalid teacher credentials. Check your email or security password.');
-      return;
-    }
-
-    onTeacherLogin(teacherRememberMe);
+    setSuccessMessage(null);
+    const result = await onTeacherLogin(teacherEmail.trim().toLowerCase(), teacherPassword, teacherRememberMe);
+    if (result.error) setErrorMessage(result.error);
   };
 
   return (
@@ -206,12 +188,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           <div className="p-6 sm:p-7 space-y-5">
             {/* Error Banner */}
             {errorMessage && (
-              <div
-                role="alert"
-                className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700"
-              >
+              <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                 <p className="leading-snug">{errorMessage}</p>
+              </div>
+            )}
+            {successMessage && (
+              <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-relaxed text-emerald-800">
+                {successMessage}
               </div>
             )}
 
@@ -376,7 +360,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                           required
                           value={regPassword}
                           onChange={(e) => setRegPassword(e.target.value)}
-                          placeholder="At least 4 chars"
+                          placeholder="At least 8 characters"
                           className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-2 text-sm text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
                         />
                       </div>

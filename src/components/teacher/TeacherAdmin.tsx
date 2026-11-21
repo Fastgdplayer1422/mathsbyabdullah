@@ -37,7 +37,7 @@ interface TeacherAdminProps {
   onApproveStudent: (studentId: string, courseIds: string[]) => void;
   onRejectStudent: (studentId: string) => void;
   onChangeStudentStatus: (studentId: string, status: StudentStatus) => void;
-  onAddStudent: (student: Omit<Student, 'id' | 'createdAt'>) => void;
+  onAddStudent: (student: Omit<Student, 'id' | 'createdAt'>, initialPassword: string) => Promise<Student>;
   onUpdateStudent: (id: string, updates: Partial<Omit<Student, 'id' | 'createdAt'>>) => void;
   onDeleteStudent: (id: string) => void;
   onToggleEnrollment: (studentId: string, courseId: string) => void;
