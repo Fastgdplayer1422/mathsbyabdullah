@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { ToastBanner } from './components/ToastBanner';
 import { TopNav } from './components/TopNav';
 import { AuthPage } from './components/auth/AuthPage';
+import { LandingPage } from './components/landing/LandingPage';
+const PhotoToPdfScanner = lazy(() =>
+  import('./components/student/PhotoToPdfScanner').then(({ PhotoToPdfScanner }) => ({ default: PhotoToPdfScanner })),
+);
 import { PendingApprovalPage } from './components/auth/PendingApprovalPage';
 import { StudentAssignments } from './components/student/StudentAssignments';
 import { StudentDashboard } from './components/student/StudentDashboard';
@@ -66,6 +70,7 @@ export default function App() {
     return null;
   });
 
+  const [authMode, setAuthMode] = useState<'landing' | 'student-signin' | 'student-signup' | 'teacher'>('landing');
   const [studentTab, setStudentTab] = useState<StudentTab>('dashboard');
   const [teacherTab, setTeacherTab] = useState<TeacherTab>('live-controller');
   const [scheduleCourseFilter, setScheduleCourseFilter] = useState<string>('all');
@@ -167,16 +172,28 @@ export default function App() {
     setStudentTab('schedule');
   }, []);
 
-  // 1. If not logged in: Full-Page Auth Gate
+  // 1. Public landing page and the selected sign-in flow
   if (!session) {
     return (
       <>
-        <AuthPage
-          state={state}
-          onStudentLogin={handleStudentLogin}
-          onStudentRegister={registerStudent}
-          onTeacherLogin={handleTeacherLogin}
-        />
+        {authMode === 'landing' ? (
+          <LandingPage
+            courses={state.courses}
+            onOpenStudentLogin={() => setAuthMode('student-signin')}
+            onOpenStudentSignup={() => setAuthMode('student-signup')}
+            onOpenTeacherLogin={() => setAuthMode('teacher')}
+          />
+        ) : (
+          <AuthPage
+            key={authMode}
+            state={state}
+            initialMode={authMode}
+            onBackToLanding={() => setAuthMode('landing')}
+            onStudentLogin={handleStudentLogin}
+            onStudentRegister={registerStudent}
+            onTeacherLogin={handleTeacherLogin}
+          />
+        )}
         <ToastBanner message={toastMessage} onDismiss={() => setToastMessage(null)} />
       </>
     );
@@ -250,6 +267,18 @@ export default function App() {
             />
           )}
 
+  {studentTab === 'photo-to-pdf' && (
+    <Suspense fallback={<div role="status" className="flex min-h-[40vh] items-center justify-center text-sm text-[#71717A]">Loading photo scanner…</div>}>
+      <PhotoToPdfScanner
+        state={state}
+        activeStudent={activeStudent}
+        onSubmitAssignment={submitAssignment}
+        onNotify={notify}
+        onNavigateTab={setStudentTab}
+      />
+    </Suspense>
+  )}
+
           {studentTab === 'assignments' && (
             <StudentAssignments
               state={state}
@@ -258,6 +287,7 @@ export default function App() {
               onRetractSubmission={retractSubmission}
               onNotify={notify}
               onSwitchToTeacher={() => {}}
+              onNavigateTab={setStudentTab}
             />
           )}
         </main>

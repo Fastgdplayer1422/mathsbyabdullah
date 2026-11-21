@@ -80,7 +80,12 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      if (!file.type.startsWith('image/')) continue;
+      const supportedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+      const supportedImageName = /\.(jpe?g|png|webp)$/i.test(file.name);
+      if (!supportedMimeTypes.includes(file.type) && !supportedImageName) {
+        onNotify(`${file.name} is not a supported image. Choose JPG, PNG, or WEBP.`);
+        continue;
+      }
 
       try {
         const dataUrl = await readFileAsDataUrl(file);
@@ -154,13 +159,9 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
   }> => {
     return new Promise((resolve) => {
       const img = new Image();
+      img.crossOrigin = 'anonymous';
       img.onload = () => {
         const { rotation } = page;
-        if (rotation === 0) {
-          resolve({ dataUrl: page.dataUrl, width: img.width, height: img.height });
-          return;
-        }
-
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         if (!ctx) {
@@ -197,7 +198,7 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
   /**
    * Generates the multi-page A4 PDF using jsPDF
    */
-  const generatePdfBlob = async (): Promise<{ dataUrl: string; size: number } | null> => {
+  const generatePdfBlob = async (): Promise<{ dataUrl: string; size: number; fileName: string } | null> => {
     if (pages.length === 0) return null;
 
     setIsGenerating(true);
@@ -232,7 +233,8 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
         const xOffset = margin + (availableWidth - renderWidth) / 2;
         const yOffset = margin + (availableHeight - renderHeight) / 2;
 
-        doc.addImage(dataUrl, 'JPEG', xOffset, yOffset, renderWidth, renderHeight, undefined, 'FAST');
+        const imageFormat = dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+        doc.addImage(dataUrl, imageFormat, xOffset, yOffset, renderWidth, renderHeight, undefined, 'FAST');
 
         // Elegant minimal page counter at the bottom center
         doc.setFontSize(8);
@@ -450,6 +452,24 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
             {pages.map((page, idx) => (
               <div
                 key={page.id}
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('text/plain', String(idx));
+                }}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const sourceIndex = Number(event.dataTransfer.getData('text/plain'));
+                  if (!Number.isInteger(sourceIndex) || sourceIndex === idx) return;
+                  setPages((current) => {
+                    const reordered = [...current];
+                    const [movedPage] = reordered.splice(sourceIndex, 1);
+                    reordered.splice(idx, 0, movedPage);
+                    return reordered;
+                  });
+                  setLastGeneratedPdf(null);
+                }}
                 className="overflow-hidden rounded-2xl border border-[#E7E5E4] bg-[#FFFFFF] shadow-xs flex flex-col justify-between"
               >
                 {/* Header Badge */}

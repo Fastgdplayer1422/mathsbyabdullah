@@ -6,6 +6,8 @@ import {
   Clock,
   ExternalLink,
   FileText,
+  Download,
+  Image as ImageIcon,
   Radio,
   UserX,
   Video,
@@ -17,6 +19,7 @@ import {
   formatReadableDate,
   formatWeeklySlots,
 } from '../../utils/formatters';
+import { downloadDataUrl, formatFileSize } from '../../utils/fileHelpers';
 
 interface StudentDashboardProps {
   state: PortalState;
@@ -502,6 +505,12 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 {filteredMaterials.map((item) => {
                   const course = courseLookup[item.courseId];
                   const isRecording = item.type === 'recording';
+                  const attachment = item.attachment;
+                  const fileName = attachment?.fileName ?? '';
+                  const fileType = attachment?.fileType.toLowerCase() ?? '';
+                  const isImage = fileType.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(fileName);
+                  const isVideo = fileType.startsWith('video/') || fileType.startsWith('audio/') || isRecording;
+                  const attachmentLabel = isImage ? 'Image' : isVideo ? 'Video / Recording' : fileType.includes('pdf') || fileName.toLowerCase().endsWith('.pdf') ? 'PDF' : 'Document';
                   const hasUrl = Boolean(item.url);
 
                   return (
@@ -540,26 +549,42 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                         </div>
                       </div>
 
-                      <div className="shrink-0 pl-12 sm:pl-0">
-                        {hasUrl ? (
+                      <div className="flex shrink-0 flex-wrap items-center gap-2 pl-12 sm:pl-0">
+                        {attachment && (
+                          <>
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#E7E5E4] bg-[#FFFFFF] px-2.5 py-1 text-[11px] font-medium text-[#52525B]">
+                              {isImage ? <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" /> : isVideo ? <Video className="h-3.5 w-3.5" aria-hidden="true" /> : <FileText className="h-3.5 w-3.5" aria-hidden="true" />}
+                              {attachmentLabel}
+                              <span className="text-[#A1A1AA]">·</span>
+                              {formatFileSize(attachment.fileSize)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                downloadDataUrl(attachment.fileData, attachment.fileName);
+                                onLogActivity(activeStudent.id, 'Downloaded Note/Recording', item.title);
+                              }}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] px-3.5 py-2 text-xs font-semibold text-[#18181B] transition-colors hover:border-[#18181B] hover:bg-[#18181B] hover:text-white"
+                            >
+                              <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                              Download
+                            </button>
+                          </>
+                        )}
+                        {!attachment && hasUrl && (
                           <a
                             href={item.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            onClick={() =>
-                              onLogActivity(
-                                activeStudent.id,
-                                'Opened Note/Recording',
-                                item.title
-                              )
-                            }
+                            onClick={() => onLogActivity(activeStudent.id, 'Opened Note/Recording', item.title)}
                             className="inline-flex items-center gap-1.5 rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] px-3.5 py-2 text-xs font-semibold text-[#18181B] transition-colors duration-150 hover:border-[#18181B] hover:bg-[#18181B] hover:text-white whitespace-nowrap shrink-0"
                           >
                             <span>Open</span>
                             <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                           </a>
-                        ) : (
-                          <span className="inline-flex items-center rounded-lg border border-[#E7E5E4] bg-[#F8F7F4] px-3.5 py-2 text-xs font-medium text-[#71717A]">
+                        )}
+                        {!attachment && !hasUrl && (
+                          <span className="inline-flex items-center rounded-lg border border-[#E7E5E5] bg-[#F8F7F4] px-3.5 py-2 text-xs font-medium text-[#71717A]">
                             Unavailable
                           </span>
                         )}

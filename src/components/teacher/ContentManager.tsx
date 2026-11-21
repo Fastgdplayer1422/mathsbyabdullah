@@ -94,11 +94,14 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
   const effectiveAsgCourseId = asgCourseId || state.courses[0]?.id || '';
   const effectiveMatCourseId = matCourseId || state.courses[0]?.id || '';
 
-  const handleAsgFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleAsgFileSelect = async (file?: File) => {
     if (!file) return;
 
     try {
+      if (file.size > 20 * 1024 * 1024) {
+        onNotify('Choose a file smaller than 20 MB.');
+        return;
+      }
       const dataUrl = await readFileAsDataUrl(file);
       const meta: UploadedFileMeta = {
         fileName: file.name,
@@ -117,11 +120,14 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
     }
   };
 
-  const handleMatFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleMatFileSelect = async (file?: File) => {
     if (!file) return;
 
     try {
+      if (file.size > 20 * 1024 * 1024) {
+        onNotify('Choose a file smaller than 20 MB.');
+        return;
+      }
       const dataUrl = await readFileAsDataUrl(file);
       const meta: UploadedFileMeta = {
         fileName: file.name,
@@ -141,6 +147,10 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
   const handleCreateAssignment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!asgTitle.trim() || !asgDueDate || !asgDescription.trim() || !effectiveAsgCourseId) return;
+    if (!asgAttachment) {
+      onNotify('Upload an assignment file before publishing.');
+      return;
+    }
     onAddAssignment({
       courseId: effectiveAsgCourseId,
       title: asgTitle.trim(),
@@ -160,8 +170,8 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
   const handleCreateMaterial = (e: React.FormEvent) => {
     e.preventDefault();
     if (!matTitle.trim() || !effectiveMatCourseId) return;
-    if (!matAttachment && !matUrl.trim()) {
-      onNotify('Please upload a file or provide a video/notes link.');
+    if (!matAttachment) {
+      onNotify('Upload a study material file before publishing.');
       return;
     }
     onAddMaterial({
@@ -361,36 +371,39 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                   </div>
                 ) : (
                   <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => asgFileInputRef.current?.click()}
-                    className="cursor-pointer rounded-xl border-2 border-dashed border-[#E7E5E4] bg-[#F8F7F4] p-4 text-center hover:border-[#4338CA] hover:bg-white transition-colors"
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        asgFileInputRef.current?.click();
+                      }
+                    }}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      void handleAsgFileSelect(event.dataTransfer.files[0]);
+                    }}
+                    className="cursor-pointer rounded-xl border-2 border-dashed border-[#E7E5E4] bg-[#F8F7F4] p-4 text-center hover:border-[#4338CA] hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4338CA] transition-colors"
                   >
                     <input
                       ref={asgFileInputRef}
                       type="file"
                       accept="*/*"
-                      onChange={handleAsgFileSelect}
+                      tabIndex={-1}
+                      aria-hidden="true"
+                      onChange={(event) => {
+                        void handleAsgFileSelect(event.target.files?.[0]);
+                        event.currentTarget.value = '';
+                      }}
                       className="hidden"
                     />
                     <Upload className="mx-auto h-5 w-5 text-[#71717A]" />
-                    <p className="mt-1 text-xs font-semibold text-[#18181B]">Click to upload assignment file</p>
+                    <p className="mt-1 text-xs font-semibold text-[#18181B]">Drop a file here or click to browse</p>
                     <p className="text-[10px] text-[#71717A]">PDF, Word docs, past-paper packs, images, spreadsheets</p>
                   </div>
                 )}
-              </div>
-
-              {/* Optional Link Fallback */}
-              <div className="space-y-1.5">
-                <label htmlFor="asg-url" className="block text-xs font-semibold text-[#71717A]">
-                  External Link / Google Drive Backup (Optional)
-                </label>
-                <input
-                  id="asg-url"
-                  type="text"
-                  value={asgResourceUrl}
-                  onChange={(e) => setAsgResourceUrl(e.target.value)}
-                  placeholder="https://drive.google.com/..."
-                  className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3.5 py-2 text-xs text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
-                />
               </div>
 
               <button
@@ -741,36 +754,39 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                   </div>
                 ) : (
                   <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => matFileInputRef.current?.click()}
-                    className="cursor-pointer rounded-xl border-2 border-dashed border-[#E7E5E4] bg-[#F8F7F4] p-4 text-center hover:border-[#4338CA] hover:bg-white transition-colors"
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        matFileInputRef.current?.click();
+                      }
+                    }}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      void handleMatFileSelect(event.dataTransfer.files[0]);
+                    }}
+                    className="cursor-pointer rounded-xl border-2 border-dashed border-[#E7E5E4] bg-[#F8F7F4] p-4 text-center hover:border-[#4338CA] hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4338CA] transition-colors"
                   >
                     <input
                       ref={matFileInputRef}
                       type="file"
                       accept="*/*"
-                      onChange={handleMatFileSelect}
+                      tabIndex={-1}
+                      aria-hidden="true"
+                      onChange={(event) => {
+                        void handleMatFileSelect(event.target.files?.[0]);
+                        event.currentTarget.value = '';
+                      }}
                       className="hidden"
                     />
                     <Upload className="mx-auto h-5 w-5 text-[#71717A]" />
-                    <p className="mt-1 text-xs font-semibold text-[#18181B]">Click to upload material file</p>
+                    <p className="mt-1 text-xs font-semibold text-[#18181B]">Drop a file here or click to browse</p>
                     <p className="text-[10px] text-[#71717A]">Video recordings, PDF notes, past papers, spreadsheets</p>
                   </div>
                 )}
-              </div>
-
-              {/* Optional Link Fallback */}
-              <div className="space-y-1.5">
-                <label htmlFor="mat-url" className="block text-xs font-semibold text-[#71717A]">
-                  Google Drive / External Video Link (Optional)
-                </label>
-                <input
-                  id="mat-url"
-                  type="text"
-                  value={matUrl}
-                  onChange={(e) => setMatUrl(e.target.value)}
-                  placeholder="https://drive.google.com/file/d/..."
-                  className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3.5 py-2 text-xs text-[#18181B]"
-                />
               </div>
 
               <button

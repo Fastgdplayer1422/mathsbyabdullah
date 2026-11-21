@@ -4,6 +4,7 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
+  Download,
   ExternalLink,
   FileCheck2,
   FolderOpen,
@@ -18,8 +19,10 @@ import {
   Course,
   PortalState,
   Student,
+  UploadedFileMeta,
 } from '../../types/portal';
 import { formatReadableDate } from '../../utils/formatters';
+import { downloadDataUrl, formatFileSize, readFileAsDataUrl } from '../../utils/fileHelpers';
 
 interface StudentAssignmentsProps {
   state: PortalState;
@@ -28,11 +31,13 @@ interface StudentAssignmentsProps {
     assignmentId: string,
     studentId: string,
     submissionUrl: string,
-    submissionNote: string
+    submissionNote: string,
+    attachment?: UploadedFileMeta
   ) => void;
   onRetractSubmission: (assignmentId: string, studentId: string) => void;
   onNotify: (msg: string) => void;
   onSwitchToTeacher: () => void;
+  onNavigateTab: (tab: 'photo-to-pdf') => void;
 }
 
 const ASSIGNMENT_STATUS_META: Record<
@@ -63,12 +68,15 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
   onRetractSubmission,
   onNotify,
   onSwitchToTeacher,
+  onNavigateTab,
 }) => {
   const [statusFilter, setStatusFilter] = useState<'All' | AssignmentStatus>('All');
   const [courseFilter, setCourseFilter] = useState<string>('all');
   const [activeModalAssignment, setActiveModalAssignment] = useState<Assignment | null>(null);
   const [submissionUrl, setSubmissionUrl] = useState('');
   const [submissionNote, setSubmissionNote] = useState('');
+  const [submissionAttachment, setSubmissionAttachment] = useState<UploadedFileMeta | null>(null);
+  const [uploadError, setUploadError] = useState('');
 
   const enrolledCourseIds = activeStudent?.enrolledCourseIds ?? [];
 
@@ -101,6 +109,7 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
         status: (sub ? sub.status : 'Pending') as AssignmentStatus,
         submissionUrl: sub?.submissionUrl,
         submissionNote: sub?.submissionNote,
+        submissionAttachment: sub?.attachment,
         submittedAt: sub?.submittedAt,
         grade: sub?.grade,
         teacherFeedback: sub?.teacherFeedback,
@@ -145,16 +154,48 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
     setActiveModalAssignment(assignment);
     setSubmissionUrl(assignment.submissionUrl ?? '');
     setSubmissionNote(assignment.submissionNote ?? '');
+    setSubmissionAttachment(null);
+    setUploadError('');
+  };
+
+  const handleSubmissionFile = async (file?: File) => {
+    setUploadError('');
+    setSubmissionAttachment(null);
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) {
+      setUploadError('Choose a PDF smaller than 20 MB.');
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      setUploadError('Please upload a PDF file. If you have phone photos, convert them with Photo to PDF first.');
+      return;
+    }
+    try {
+      const header = new TextDecoder().decode(await file.slice(0, 1024).arrayBuffer());
+      if (!header.includes('%PDF-')) {
+        setUploadError('This file does not appear to be a valid PDF.');
+        return;
+      }
+      const fileData = await readFileAsDataUrl(file);
+      setSubmissionAttachment({ fileName: file.name, fileSize: file.size, fileType: 'application/pdf', fileData });
+    } catch {
+      setUploadError('We could not read this file. Please choose a valid PDF and try again.');
+    }
   };
 
   const handleModalSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeModalAssignment || !activeStudent) return;
-    onSubmitAssignment(activeModalAssignment.id, activeStudent.id, submissionUrl, submissionNote);
+    if (!submissionAttachment) {
+      setUploadError('Upload your completed workings as a PDF before submitting.');
+      return;
+    }
+    onSubmitAssignment(activeModalAssignment.id, activeStudent.id, '', submissionNote, submissionAttachment);
     onNotify(`Submitted "${activeModalAssignment.title}"`);
     setActiveModalAssignment(null);
     setSubmissionUrl('');
     setSubmissionNote('');
+    setSubmissionAttachment(null);
   };
 
   return (
@@ -305,7 +346,7 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
 
                     {/* Submitted Details */}
                     {(assignment.status === 'Submitted' || assignment.status === 'Graded') &&
-                      (assignment.submissionUrl || assignment.submissionNote) && (
+                      (assignment.submissionUrl || assignment.submissionNote || assignment.submissionAttachment) && (
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-1 text-xs text-[#52525B]">
                           {assignment.submittedAt && (
                             <span className="inline-flex items-center gap-1.5 font-medium text-[#18181B]">
@@ -324,6 +365,16 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
                               <ExternalLink className="h-3 w-3" aria-hidden="true" />
                             </a>
                           )}
+                          {assignment.submissionAttachment && (
+                            <button
+                              type="button"
+                              onClick={() => downloadDataUrl(assignment.submissionAttachment!.fileData, assignment.submissionAttachment!.fileName)}
+                              className="inline-flex items-center gap-1 font-semibold text-[#4338CA] hover:underline"
+                            >
+                              <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                              Download submitted PDF
+                            </button>
+                          )}
                           {assignment.submissionNote && (
                             <span className="text-[#71717A]">
                               Note: &ldquo;{assignment.submissionNote}&rdquo;
@@ -335,17 +386,15 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
 
                   {/* Right Actions */}
                   <div className="flex shrink-0 flex-wrap items-center gap-2.5 lg:flex-col lg:items-end">
-                    {assignment.resourceUrl && (
-                      <a
-                        href={assignment.resourceUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#E7E5E4] bg-[#F8F7F4] px-3.5 py-2 text-xs font-semibold text-[#18181B] transition-colors hover:border-[#18181B] whitespace-nowrap shrink-0"
-                      >
-                        <span>{assignment.resourceLabel || 'Resource Link'}</span>
-                        <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                    {assignment.attachment ? (
+                      <button type="button" onClick={() => downloadDataUrl(assignment.attachment!.fileData, assignment.attachment!.fileName)} className="inline-flex items-center gap-1.5 rounded-lg border border-[#E7E5E4] bg-[#F8F7F4] px-3.5 py-2 text-xs font-semibold text-[#18181B] transition-colors hover:border-[#18181B] whitespace-nowrap shrink-0">
+                        <span>Download {assignment.attachment.fileName}</span>
+                      </button>
+                    ) : assignment.resourceUrl ? (
+                      <a href={assignment.resourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-[#E7E5E4] bg-[#F8F7F4] px-3.5 py-2 text-xs font-semibold text-[#18181B] transition-colors hover:border-[#18181B] whitespace-nowrap shrink-0">
+                        <span>{assignment.resourceLabel || 'Resource Link'}</span><ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                       </a>
-                    )}
+                    ) : null}
 
                     {assignment.status === 'Pending' && (
                       <button
@@ -365,7 +414,7 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
                           onClick={() => openSubmitModal(assignment)}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] px-3 py-2 text-xs font-semibold text-[#18181B] hover:bg-[#F8F7F4] whitespace-nowrap shrink-0"
                         >
-                          <span>Update Link</span>
+                          <span>Replace PDF</span>
                         </button>
                         <button
                           type="button"
@@ -421,30 +470,14 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
             </div>
 
             <form onSubmit={handleModalSubmit} className="mt-5 space-y-4">
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="submission-url"
-                  className="block text-xs font-semibold text-[#18181B]"
-                >
-                  Work Link (Google Drive / PDF / Cloud Link)
+              <div className="space-y-2">
+                <label htmlFor="submission-pdf" className="block text-xs font-semibold text-[#18181B]">
+                  Completed Workings (PDF only)
                 </label>
-                <div className="relative">
-                  <Link2
-                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#71717A]"
-                    aria-hidden="true"
-                  />
-                  <input
-                    id="submission-url"
-                    type="text"
-                    value={submissionUrl}
-                    onChange={(e) => setSubmissionUrl(e.target.value)}
-                    placeholder="https://drive.google.com/file/d/..."
-                    className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] py-2.5 pl-9 pr-3 text-sm text-[#18181B] placeholder:text-[#A1A1AA] focus:border-[#4338CA] focus:bg-white focus:outline-none"
-                  />
-                </div>
-                <p className="text-[11px] text-[#71717A]">
-                  Optional if submitting paper work in class — you can still mark as submitted.
-                </p>
+                <input id="submission-pdf" type="file" accept="application/pdf,.pdf" onChange={(event) => void handleSubmissionFile(event.target.files?.[0])} className="block w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] p-2 text-xs file:mr-3 file:rounded-md file:border-0 file:bg-[#EEF2FF] file:px-3 file:py-2 file:text-xs file:font-semibold file:text-[#4338CA]" />
+                {submissionAttachment && <p className="text-xs text-[#4338CA]">{submissionAttachment.fileName} · {formatFileSize(submissionAttachment.fileSize)}</p>}
+                {uploadError && <p role="alert" className="text-xs font-medium text-red-700">{uploadError}</p>}
+                <button type="button" onClick={() => { setActiveModalAssignment(null); onNavigateTab('photo-to-pdf'); }} className="text-xs font-semibold text-[#4338CA] underline underline-offset-2">Need to turn phone photos into a PDF? Open Photo to PDF</button>
               </div>
 
               <div className="space-y-1.5">

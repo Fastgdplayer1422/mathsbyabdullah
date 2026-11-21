@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ArrowRight,
   BookOpen,
@@ -12,7 +12,9 @@ import {
   Layers,
   Lock,
   LogIn,
+  Menu,
   RotateCw,
+  X,
   Shield,
   Smartphone,
   Sparkles,
@@ -35,11 +37,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onOpenStudentSignup,
   onOpenTeacherLogin,
 }) => {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   return (
     <div className="min-h-screen flex flex-col bg-[#F8F7F4] text-[#18181B] antialiased selection:bg-[#F97316]/20">
       {/* 1. Header Navigation Bar */}
       <header className="sticky top-0 z-40 border-b border-[#E7E5E4] bg-[#F8F7F4]/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-[1240px] items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
+        <div className="mx-auto max-w-[1240px] px-4 sm:px-6">
+          <div className="flex items-center justify-between gap-4 py-3.5">
           {/* Brand Logo */}
           <div className="flex items-center gap-3">
             <BrandMonogram size="md" />
@@ -54,7 +59,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
 
           {/* Desktop Anchor Links */}
-          <nav aria-label="Landing page navigation" className="hidden md:flex items-center gap-7 text-xs font-semibold text-[#52525B]">
+          <nav aria-label="Landing page navigation" className="hidden lg:flex items-center gap-7 text-xs font-semibold text-[#52525B]">
             <a href="#curriculum" className="hover:text-[#18181B] transition-colors">
               Curriculum &amp; Batches
             </a>
@@ -70,7 +75,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </nav>
 
           {/* Right Action Buttons */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="hidden sm:flex items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={onOpenTeacherLogin}
@@ -100,7 +105,39 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <ArrowRight className="h-3.5 w-3.5 text-[#F97316]" aria-hidden="true" />
             </button>
           </div>
+          <button
+            type="button"
+            className="inline-flex size-10 items-center justify-center rounded-lg border border-[#E7E5E4] bg-white text-[#18181B] sm:hidden"
+            aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="landing-mobile-menu"
+            onClick={() => setMobileMenuOpen((open) => !open)}
+          >
+            {mobileMenuOpen ? <X className="size-4" aria-hidden="true" /> : <Menu className="size-4" aria-hidden="true" />}
+          </button>
         </div>
+        {mobileMenuOpen && (
+          <div id="landing-mobile-menu" className="border-t border-[#E7E5E4] pb-4 pt-3 sm:hidden">
+            <nav aria-label="Mobile landing page navigation" className="grid gap-1 text-sm font-medium text-[#52525B]">
+              <a href="#curriculum" onClick={() => setMobileMenuOpen(false)} className="rounded-lg px-3 py-2.5 hover:bg-white">Curriculum &amp; Batches</a>
+              <a href="#features" onClick={() => setMobileMenuOpen(false)} className="rounded-lg px-3 py-2.5 hover:bg-white">Key Features</a>
+              <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)} className="rounded-lg px-3 py-2.5 hover:bg-white">How It Works</a>
+              <a href="#photo-to-pdf" onClick={() => setMobileMenuOpen(false)} className="rounded-lg px-3 py-2.5 hover:bg-white">Photo-to-PDF</a>
+            </nav>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => { setMobileMenuOpen(false); onOpenTeacherLogin(); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#E7E5E4] bg-white px-3 text-sm font-semibold text-[#52525B]">
+                <Lock className="size-4" aria-hidden="true" /> Teacher Portal
+              </button>
+              <button type="button" onClick={() => { setMobileMenuOpen(false); onOpenStudentLogin(); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#18181B] bg-white px-3 text-sm font-semibold text-[#18181B]">
+                <LogIn className="size-4" aria-hidden="true" /> Student Sign In
+              </button>
+              <button type="button" onClick={() => { setMobileMenuOpen(false); onOpenStudentSignup(); }} className="col-span-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#18181B] px-4 text-sm font-semibold text-white">
+                Join as a Student <ArrowRight className="size-4 text-[#F97316]" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
       </header>
 
       {/* 2. Hero Section */}
