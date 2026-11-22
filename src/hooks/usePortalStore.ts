@@ -664,6 +664,7 @@ export function usePortalStore() {
         student_id: validStudentUuid,
         user_id: validStudentUuid,
         status: 'Submitted',
+        file_url: storagePath || normalizedUrl || '',
         submission_url: normalizedUrl || null,
         submission_note: cleanNote || null,
         submitted_at: submittedAt,
