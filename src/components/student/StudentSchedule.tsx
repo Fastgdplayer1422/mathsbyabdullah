@@ -182,10 +182,10 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
 
   if (!activeStudent) {
     return (
-      <div className="rounded-2xl border border-[#E7E5E4] bg-[#FFFFFF] px-6 py-14 text-center">
+      <div className="rounded-2xl border border-[#E7E5E4] dark:border-slate-700 bg-[#FFFFFF] dark:bg-slate-900 px-6 py-14 text-center">
         <Calendar className="mx-auto h-8 w-8 text-[#A1A1AA]" />
-        <p className="mt-3 text-sm font-semibold text-[#18181B]">No student profile selected</p>
-        <p className="mt-1 text-xs text-[#71717A]">
+        <p className="mt-3 text-sm font-semibold text-[#18181B] dark:text-slate-100">No student profile selected</p>
+        <p className="mt-1 text-xs text-[#71717A] dark:text-slate-400">
           Create a student profile in Teacher Admin to view class schedules.
         </p>
         <button
@@ -204,10 +204,10 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
       {/* Header & Controls */}
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="space-y-1">
-          <h1 className="font-display text-2xl font-bold tracking-tight text-[#18181B]">
+          <h1 className="font-display text-2xl font-bold tracking-tight text-[#18181B] dark:text-slate-100">
             Class Schedule
           </h1>
-          <p className="text-sm text-[#52525B]">
+          <p className="text-sm text-[#52525B] dark:text-slate-300">
             Weekly recurring lectures, timings, and direct classroom links for your enrolled courses.
           </p>
         </div>
@@ -222,7 +222,7 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
             value={selectedCourseFilter}
             onChange={(e) => onCourseFilterChange(e.target.value)}
             disabled={enrolledCourses.length === 0}
-            className="rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] px-3 py-2 text-xs font-semibold text-[#18181B] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4338CA]"
+            className="rounded-lg border border-[#E7E5E4] dark:border-slate-700 bg-[#FFFFFF] dark:bg-slate-900 px-3 py-2 text-xs font-semibold text-[#18181B] dark:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4338CA]"
           >
             <option value="all">
               {enrolledCourses.length === 0 ? 'No Enrolled Courses' : 'All My Courses'}
@@ -238,7 +238,7 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
           <div
             role="group"
             aria-label="Schedule layout view"
-            className="flex items-center rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] p-0.5"
+            className="flex items-center rounded-lg border border-[#E7E5E4] dark:border-slate-700 bg-[#FFFFFF] dark:bg-slate-900 p-0.5"
           >
             <button
               type="button"
@@ -246,7 +246,7 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
               className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
                 viewMode === 'list'
                   ? 'bg-[#18181B] text-white'
-                  : 'text-[#52525B] hover:text-[#18181B]'
+                  : 'text-[#52525B] dark:text-slate-300 hover:text-[#18181B] dark:text-slate-100'
               }`}
             >
               <List className="h-3.5 w-3.5" aria-hidden="true" />
@@ -258,7 +258,7 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
               className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
                 viewMode === 'week'
                   ? 'bg-[#18181B] text-white'
-                  : 'text-[#52525B] hover:text-[#18181B]'
+                  : 'text-[#52525B] dark:text-slate-300 hover:text-[#18181B] dark:text-slate-100'
               }`}
             >
               <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
@@ -270,16 +270,16 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
 
       {/* Recurring Weekly Timetable Overview Card */}
       {enrolledCourses.length > 0 && (
-        <div className="rounded-2xl border border-[#E7E5E4] bg-[#FFFFFF] p-5 shadow-xs">
+        <div className="rounded-2xl border border-[#E7E5E4] dark:border-slate-700 bg-[#FFFFFF] dark:bg-slate-900 p-5 shadow-xs">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-[#F4F4F5] pb-4">
             <div>
               <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-[#4338CA]" />
-                <h2 className="font-display text-sm font-bold text-[#18181B]">
+                <h2 className="font-display text-sm font-bold text-[#18181B] dark:text-slate-100">
                   Weekly Recurring Timetable
                 </h2>
               </div>
-              <p className="mt-0.5 text-xs text-[#71717A]">
+              <p className="mt-0.5 text-xs text-[#71717A] dark:text-slate-400">
                 Structured class slots populated directly from your enrolled batch timetables.
               </p>
             </div>
@@ -349,7 +349,7 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
       )}
 
       {/* Status Filter Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7E5E4] pb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7E5E4] dark:border-slate-700 pb-4">
         <div role="group" aria-label="Filter by session status" className="flex flex-wrap gap-1.5">
           {(['All', 'Live', 'Upcoming', 'Completed'] as const).map((status) => {
             const active = statusFilter === status;
@@ -361,7 +361,7 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
                 className={`rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
                   active
                     ? 'bg-[#4338CA] text-white'
-                    : 'bg-[#FFFFFF] text-[#52525B] border border-[#E7E5E4] hover:text-[#18181B]'
+                    : 'bg-[#FFFFFF] dark:bg-slate-900 text-[#52525B] dark:text-slate-300 border border-[#E7E5E4] dark:border-slate-700 hover:text-[#18181B] dark:text-slate-100'
                 }`}
               >
                 {status}
@@ -370,7 +370,7 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
           })}
         </div>
 
-        <p className="text-xs font-medium text-[#71717A] tabular-nums">
+        <p className="text-xs font-medium text-[#71717A] dark:text-slate-400 tabular-nums">
           Showing {filteredSessions.length}{' '}
           {filteredSessions.length === 1 ? 'session' : 'sessions'}
         </p>
@@ -379,12 +379,12 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
       {/* Content */}
       {viewMode === 'list' ? (
         filteredSessions.length === 0 ? (
-          <div className="rounded-2xl border border-[#E7E5E4] bg-[#FFFFFF] px-6 py-14 text-center">
+          <div className="rounded-2xl border border-[#E7E5E4] dark:border-slate-700 bg-[#FFFFFF] dark:bg-slate-900 px-6 py-14 text-center">
             <Calendar className="mx-auto h-8 w-8 text-[#A1A1AA]" />
-            <p className="mt-3 text-sm font-semibold text-[#18181B]">
+            <p className="mt-3 text-sm font-semibold text-[#18181B] dark:text-slate-100">
               No classes match your current schedule view
             </p>
-            <p className="mt-1 text-xs text-[#71717A]">
+            <p className="mt-1 text-xs text-[#71717A] dark:text-slate-400">
               {enrolledCourses.length === 0
                 ? 'You have not been enrolled in any courses yet. Ask your tutor to add you to a batch.'
                 : 'Upcoming lecture dates and Google Meet / Zoom links will appear once course schedule slots are configured.'}
@@ -396,7 +396,7 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
                   onCourseFilterChange('all');
                   setStatusFilter('All');
                 }}
-                className="mt-4 rounded-lg border border-[#E7E5E4] bg-[#F8F7F4] px-4 py-2 text-xs font-semibold text-[#18181B] hover:bg-[#E7E5E4]/60"
+                className="mt-4 rounded-lg border border-[#E7E5E4] dark:border-slate-700 bg-[#F8F7F4] dark:bg-slate-800 px-4 py-2 text-xs font-semibold text-[#18181B] dark:text-slate-100 hover:bg-[#E7E5E4]/60"
               >
                 Reset Filters
               </button>
@@ -418,7 +418,7 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
               return (
                 <article
                   key={session.id}
-                  className="flex flex-col gap-4 rounded-2xl border border-[#E7E5E4] bg-[#FFFFFF] p-4 transition-colors duration-150 hover:border-[#D4D4D8] sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-5"
+                  className="flex flex-col gap-4 rounded-2xl border border-[#E7E5E4] dark:border-slate-700 bg-[#FFFFFF] dark:bg-slate-900 p-4 transition-colors duration-150 hover:border-[#D4D4D8] sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-5"
                 >
                   <div className="flex items-start gap-4 min-w-0">
                     {/* Date Tile */}
@@ -447,19 +447,19 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
                           {badge.icon}
                           <span>{badge.label}</span>
                         </span>
-                        <span className="text-xs font-medium text-[#52525B]">
+                        <span className="text-xs font-medium text-[#52525B] dark:text-slate-300">
                           {course ? `${course.title} · ${course.batchName}` : 'General Session'}
                         </span>
                       </div>
 
-                      <h2 className="font-display text-base font-bold text-[#18181B] leading-snug">
+                      <h2 className="font-display text-base font-bold text-[#18181B] dark:text-slate-100 leading-snug">
                         {session.topic}
                       </h2>
 
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#71717A] tabular-nums">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#71717A] dark:text-slate-400 tabular-nums">
                         <span>{formatReadableDate(session.date, false)}</span>
                         <span aria-hidden="true">·</span>
-                        <span className="font-mono font-medium text-[#52525B]">
+                        <span className="font-mono font-medium text-[#52525B] dark:text-slate-300">
                           {session.startTime} – {session.endTime}
                         </span>
                       </div>
@@ -481,13 +481,13 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
                               session.topic
                             )
                           }
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] px-4 py-2 text-xs font-semibold text-[#52525B] transition-colors hover:border-[#18181B] hover:text-[#18181B] whitespace-nowrap shrink-0"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-[#E7E5E4] dark:border-slate-700 bg-[#FFFFFF] dark:bg-slate-900 px-4 py-2 text-xs font-semibold text-[#52525B] dark:text-slate-300 transition-colors hover:border-[#18181B] hover:text-[#18181B] dark:text-slate-100 whitespace-nowrap shrink-0"
                         >
                           <span>Room Link</span>
                           <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
                         </a>
                       ) : (
-                        <span className="text-xs font-medium text-[#71717A]">Session ended</span>
+                        <span className="text-xs font-medium text-[#71717A] dark:text-slate-400">Session ended</span>
                       )
                     ) : hasLink ? (
                       <a
@@ -515,7 +515,7 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
                       <button
                         type="button"
                         disabled
-                        className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-full border border-[#E7E5E4] bg-[#F8F7F4] px-4 py-2 text-xs font-medium text-[#71717A] whitespace-nowrap shrink-0"
+                        className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-full border border-[#E7E5E4] dark:border-slate-700 bg-[#F8F7F4] dark:bg-slate-800 px-4 py-2 text-xs font-medium text-[#71717A] dark:text-slate-400 whitespace-nowrap shrink-0"
                       >
                         <VideoOff className="h-3.5 w-3.5" aria-hidden="true" />
                         <span>Link not posted yet</span>
@@ -530,8 +530,8 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
       ) : (
         /* Interactive Weekly Grid View */
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#E7E5E4] bg-[#FFFFFF] px-5 py-3.5">
-            <h2 className="font-display text-sm font-bold text-[#18181B] tabular-nums">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#E7E5E4] dark:border-slate-700 bg-[#FFFFFF] dark:bg-slate-900 px-5 py-3.5">
+            <h2 className="font-display text-sm font-bold text-[#18181B] dark:text-slate-100 tabular-nums">
               Week of {weekRangeLabel}
             </h2>
             <div className="flex items-center gap-2">
@@ -540,7 +540,7 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
                 onClick={() =>
                   setWeekAnchor(getStartOfWeekMonday(new Date()))
                 }
-                className="rounded-lg border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-1.5 text-xs font-semibold text-[#18181B] hover:bg-[#E7E5E4]/60"
+                className="rounded-lg border border-[#E7E5E4] dark:border-slate-700 bg-[#F8F7F4] dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-[#18181B] dark:text-slate-100 hover:bg-[#E7E5E4]/60"
               >
                 Current Week
               </button>
@@ -548,7 +548,7 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
                 type="button"
                 aria-label="Previous week"
                 onClick={() => setWeekAnchor((prev) => addDays(prev, -7))}
-                className="rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] p-1.5 text-[#18181B] hover:bg-[#F8F7F4]"
+                className="rounded-lg border border-[#E7E5E4] dark:border-slate-700 bg-[#FFFFFF] dark:bg-slate-900 p-1.5 text-[#18181B] dark:text-slate-100 hover:bg-[#F8F7F4] dark:bg-slate-800"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -556,7 +556,7 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
                 type="button"
                 aria-label="Next week"
                 onClick={() => setWeekAnchor((prev) => addDays(prev, 7))}
-                className="rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] p-1.5 text-[#18181B] hover:bg-[#F8F7F4]"
+                className="rounded-lg border border-[#E7E5E4] dark:border-slate-700 bg-[#FFFFFF] dark:bg-slate-900 p-1.5 text-[#18181B] dark:text-slate-100 hover:bg-[#F8F7F4] dark:bg-slate-800"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
@@ -569,17 +569,17 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
               return (
                 <div
                   key={day.iso}
-                  className={`flex min-h-[190px] flex-col rounded-2xl border bg-[#FFFFFF] p-3.5 ${
-                    day.isToday ? 'border-indigo-600 dark:border-indigo-400' : 'border-[#E7E5E4]'
+                  className={`flex min-h-[190px] flex-col rounded-2xl border bg-[#FFFFFF] dark:bg-slate-900 p-3.5 ${
+                    day.isToday ? 'border-indigo-600 dark:border-indigo-400' : 'border-[#E7E5E4] dark:border-slate-700'
                   }`}
                 >
                   <div className="flex items-center justify-between border-b border-[#F4F4F5] pb-2.5">
-                    <span className="text-xs font-semibold text-[#71717A]">{day.weekday}</span>
+                    <span className="text-xs font-semibold text-[#71717A] dark:text-slate-400">{day.weekday}</span>
                     <span
                       className={`font-display text-sm font-bold tabular-nums ${
                         day.isToday
                           ? 'rounded-md bg-indigo-600 px-2 py-0.5 text-white dark:bg-indigo-500'
-                          : 'text-[#18181B]'
+                          : 'text-[#18181B] dark:text-slate-100'
                       }`}
                     >
                       {day.dayNum}
@@ -602,21 +602,21 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
                         return (
                           <div
                             key={sess.id}
-                            className="space-y-1.5 rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] p-2.5"
+                            className="space-y-1.5 rounded-xl border border-[#E7E5E4] dark:border-slate-700 bg-[#F8F7F4] dark:bg-slate-800 p-2.5"
                           >
                             <div className="flex items-center justify-between gap-1 text-[10px] font-semibold">
-                              <span className="font-mono text-[#52525B] tabular-nums">
+                              <span className="font-mono text-[#52525B] dark:text-slate-300 tabular-nums">
                                 {sess.startTime}
                               </span>
-                              <span className="inline-flex items-center gap-1 text-[#18181B]">
+                              <span className="inline-flex items-center gap-1 text-[#18181B] dark:text-slate-100">
                                 {badge.icon}
                                 {badge.label}
                               </span>
                             </div>
-                            <p className="text-xs font-semibold text-[#18181B] leading-snug line-clamp-2">
+                            <p className="text-xs font-semibold text-[#18181B] dark:text-slate-100 leading-snug line-clamp-2">
                               {sess.topic}
                             </p>
-                            <p className="text-[11px] text-[#71717A] truncate">
+                            <p className="text-[11px] text-[#71717A] dark:text-slate-400 truncate">
                               {course?.code ?? 'Class'}
                             </p>
                             {hasLink && sess.status !== 'Completed' ? (

@@ -266,7 +266,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   <span>Structured Timetables</span>
                 </div>
                 <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-100">
-                  1 to 5 Classes / Week
+                  1 to 3 Classes / Week
                 </h2>
                 <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                   Batches are scheduled with structured 30-minute intervals and automatic recurring
@@ -333,7 +333,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   Live Interactive Batches &amp; Fixed Weekly Timetables
                 </h3>
                 <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Consistent weekly schedules with custom 1 to 5 class frequencies. Real-time Next Class
+                  Consistent weekly schedules with custom 1 to 3 class frequencies. Real-time Next Class
                   countdown banners, automatic timetable population, and permanent meeting room links.
                 </p>
               </div>

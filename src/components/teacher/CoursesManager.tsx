@@ -336,8 +336,6 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                 <option value={1}>1 class / week</option>
                 <option value={2}>2 classes / week</option>
                 <option value={3}>3 classes / week</option>
-                <option value={4}>4 classes / week</option>
-                <option value={5}>5 classes / week</option>
               </select>
             </div>
           </div>
@@ -347,7 +345,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
             {weeklySlots.map((slot, idx) => (
               <div
                 key={idx}
-                className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white p-2.5 shadow-2xs space-y-1.5"
+                className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2.5 shadow-2xs space-y-1.5"
               >
                 <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                   <span className="flex items-center gap-1.5 text-slate-900 dark:text-slate-100">
@@ -700,7 +698,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                   {editWeeklySlots.map((slot, idx) => (
                     <div
                       key={idx}
-                      className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white p-2.5 space-y-1"
+                      className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2.5 space-y-1"
                     >
                       <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                         <span>Slot #{idx + 1}</span>

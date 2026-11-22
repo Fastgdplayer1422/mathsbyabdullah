@@ -336,17 +336,17 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
   return (
     <div className="space-y-8">
       {/* 1. Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between border-b border-[#E7E5E4] pb-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between border-b border-[#E7E5E4] dark:border-slate-700 pb-5">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#4338CA] text-white">
               <Camera className="h-4 w-4" />
             </span>
-            <h1 className="font-display text-2xl font-bold tracking-tight text-[#18181B]">
+            <h1 className="font-display text-2xl font-bold tracking-tight text-[#18181B] dark:text-slate-100">
               Photo to PDF Scanner
             </h1>
           </div>
-          <p className="text-xs text-[#52525B]">
+          <p className="text-xs text-[#52525B] dark:text-slate-300">
             Snap or upload photos of your handwritten notebook workings, reorder pages, and compile
             clean A4 PDFs for tutor grading.
           </p>
@@ -357,7 +357,7 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
             <button
               type="button"
               onClick={handleClearAll}
-              className="rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] px-3 py-1.5 text-xs font-semibold text-[#71717A] hover:border-red-300 hover:text-red-700 transition-colors"
+              className="rounded-lg border border-[#E7E5E4] dark:border-slate-700 bg-[#FFFFFF] dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-[#71717A] dark:text-slate-400 hover:border-red-300 hover:text-red-700 transition-colors"
             >
               Clear All ({pages.length})
             </button>
@@ -383,7 +383,7 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
         {/* Device File Picker */}
         <div
           onClick={() => fileInputRef.current?.click()}
-          className="group cursor-pointer rounded-2xl border-2 border-dashed border-[#E7E5E4] bg-[#FFFFFF] p-6 text-center transition-colors hover:border-[#4338CA] hover:bg-[#FAF9F7]"
+          className="group cursor-pointer rounded-2xl border-2 border-dashed border-[#E7E5E4] dark:border-slate-700 bg-[#FFFFFF] dark:bg-slate-900 p-6 text-center transition-colors hover:border-[#4338CA] hover:bg-[#FAF9F7] dark:bg-slate-800"
         >
           <input
             ref={fileInputRef}
@@ -396,8 +396,8 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#EEF2FF] text-[#4338CA] group-hover:scale-105 transition-transform">
             <Upload className="h-6 w-6" />
           </div>
-          <h2 className="mt-3 text-sm font-bold text-[#18181B]">Choose Photos from Device</h2>
-          <p className="mt-1 text-xs text-[#71717A]">
+          <h2 className="mt-3 text-sm font-bold text-[#18181B] dark:text-slate-100">Choose Photos from Device</h2>
+          <p className="mt-1 text-xs text-[#71717A] dark:text-slate-400">
             Select single or multiple working sheet photos (JPG, PNG, WEBP)
           </p>
         </div>
@@ -418,8 +418,8 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 group-hover:scale-105 transition-transform">
             <Camera className="h-6 w-6" />
           </div>
-          <h2 className="mt-3 text-sm font-bold text-[#18181B]">Snap with Phone / Tablet Camera</h2>
-          <p className="mt-1 text-xs text-[#71717A]">
+          <h2 className="mt-3 text-sm font-bold text-[#18181B] dark:text-slate-100">Snap with Phone / Tablet Camera</h2>
+          <p className="mt-1 text-xs text-[#71717A] dark:text-slate-400">
             Directly open camera to photograph your notebook pages in sequence
           </p>
         </div>
@@ -429,11 +429,11 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h2 className="font-display text-base font-bold text-[#18181B]">
+            <h2 className="font-display text-base font-bold text-[#18181B] dark:text-slate-100">
               Scanned Working Pages ({pages.length})
             </h2>
             {pages.length > 0 && (
-              <span className="text-xs text-[#71717A]">
+              <span className="text-xs text-[#71717A] dark:text-slate-400">
                 Drag or use arrows to reorder pages in chronological sequence
               </span>
             )}
@@ -452,10 +452,10 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
         </div>
 
         {pages.length === 0 ? (
-          <div className="rounded-2xl border border-[#E7E5E4] bg-[#FFFFFF] px-6 py-14 text-center">
+          <div className="rounded-2xl border border-[#E7E5E4] dark:border-slate-700 bg-[#FFFFFF] dark:bg-slate-900 px-6 py-14 text-center">
             <ImageIcon className="mx-auto h-8 w-8 text-[#A1A1AA]" />
-            <h3 className="mt-3 text-sm font-semibold text-[#18181B]">No photos added yet</h3>
-            <p className="mt-1 text-xs text-[#71717A]">
+            <h3 className="mt-3 text-sm font-semibold text-[#18181B] dark:text-slate-100">No photos added yet</h3>
+            <p className="mt-1 text-xs text-[#71717A] dark:text-slate-400">
               Upload photos or take camera pictures above to arrange your assignment PDF.
             </p>
           </div>
@@ -482,11 +482,11 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
                   });
                   setLastGeneratedPdf(null);
                 }}
-                className="overflow-hidden rounded-2xl border border-[#E7E5E4] bg-[#FFFFFF] shadow-xs flex flex-col justify-between"
+                className="overflow-hidden rounded-2xl border border-[#E7E5E4] dark:border-slate-700 bg-[#FFFFFF] dark:bg-slate-900 shadow-xs flex flex-col justify-between"
               >
                 {/* Header Badge */}
-                <div className="flex items-center justify-between border-b border-[#F4F4F5] bg-[#FAF9F7] px-3.5 py-2">
-                  <span className="font-mono text-xs font-bold text-[#18181B]">
+                <div className="flex items-center justify-between border-b border-[#F4F4F5] bg-[#FAF9F7] dark:bg-slate-800 px-3.5 py-2">
+                  <span className="font-mono text-xs font-bold text-[#18181B] dark:text-slate-100">
                     Page {idx + 1}
                   </span>
                   <div className="flex items-center gap-1">
@@ -494,7 +494,7 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
                       type="button"
                       onClick={() => handleRotatePage(idx)}
                       title="Rotate 90° clockwise"
-                      className="rounded-md p-1 text-[#71717A] hover:bg-[#E7E5E4]/60 hover:text-[#18181B]"
+                      className="rounded-md p-1 text-[#71717A] dark:text-slate-400 hover:bg-[#E7E5E4]/60 hover:text-[#18181B] dark:text-slate-100"
                     >
                       <RotateCw className="h-3.5 w-3.5" />
                     </button>
@@ -502,7 +502,7 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
                       type="button"
                       onClick={() => handleRemovePage(idx)}
                       title="Delete page"
-                      className="rounded-md p-1 text-[#71717A] hover:bg-red-50 hover:text-red-700"
+                      className="rounded-md p-1 text-[#71717A] dark:text-slate-400 hover:bg-red-50 hover:text-red-700"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -510,7 +510,7 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
                 </div>
 
                 {/* Thumbnail Preview with Rotation */}
-                <div className="relative flex h-52 items-center justify-center bg-[#F8F7F4] p-3 overflow-hidden">
+                <div className="relative flex h-52 items-center justify-center bg-[#F8F7F4] dark:bg-slate-800 p-3 overflow-hidden">
                   <img
                     src={page.dataUrl}
                     alt={`Page ${idx + 1}`}
@@ -529,12 +529,12 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
                 </div>
 
                 {/* Footer Controls: Reorder Buttons */}
-                <div className="flex items-center justify-between border-t border-[#F4F4F5] bg-[#FAF9F7] p-2">
+                <div className="flex items-center justify-between border-t border-[#F4F4F5] bg-[#FAF9F7] dark:bg-slate-800 p-2">
                   <button
                     type="button"
                     disabled={idx === 0}
                     onClick={() => handleMovePage(idx, 'prev')}
-                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-[#52525B] hover:text-[#18181B] disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-[#52525B] dark:text-slate-300 hover:text-[#18181B] dark:text-slate-100 disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     <ChevronLeft className="h-3.5 w-3.5" />
                     <span>Move Up</span>
@@ -544,7 +544,7 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
                     type="button"
                     disabled={idx === pages.length - 1}
                     onClick={() => handleMovePage(idx, 'next')}
-                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-[#52525B] hover:text-[#18181B] disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-[#52525B] dark:text-slate-300 hover:text-[#18181B] dark:text-slate-100 disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     <span>Move Down</span>
                     <ChevronRight className="h-3.5 w-3.5" />
@@ -558,12 +558,12 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
 
       {/* 4. Generation & Export / Submission Section */}
       {pages.length > 0 && (
-        <div className="rounded-3xl border border-[#E7E5E4] bg-[#FFFFFF] p-6 sm:p-8 shadow-sm space-y-6">
-          <div className="border-b border-[#E7E5E4] pb-4">
-            <h2 className="font-display text-lg font-bold text-[#18181B]">
+        <div className="rounded-3xl border border-[#E7E5E4] dark:border-slate-700 bg-[#FFFFFF] dark:bg-slate-900 p-6 sm:p-8 shadow-sm space-y-6">
+          <div className="border-b border-[#E7E5E4] dark:border-slate-700 pb-4">
+            <h2 className="font-display text-lg font-bold text-[#18181B] dark:text-slate-100">
               PDF Export &amp; Direct Assignment Submission
             </h2>
-            <p className="text-xs text-[#52525B] mt-0.5">
+            <p className="text-xs text-[#52525B] dark:text-slate-300 mt-0.5">
               Compile your {pages.length} working page(s) into a unified A4 portrait PDF document.
             </p>
           </div>
@@ -572,11 +572,11 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
             {/* Left: Document Settings & Download */}
             <div className="space-y-4 lg:col-span-5">
               <div className="space-y-1.5">
-                <label htmlFor="pdf-filename" className="block text-xs font-semibold text-[#18181B]">
+                <label htmlFor="pdf-filename" className="block text-xs font-semibold text-[#18181B] dark:text-slate-100">
                   Document File Name
                 </label>
                 <div className="relative">
-                  <FileText className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#71717A]" />
+                  <FileText className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#71717A] dark:text-slate-400" />
                   <input
                     id="pdf-filename"
                     type="text"
@@ -586,21 +586,21 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
                       setLastGeneratedPdf(null);
                     }}
                     placeholder="Maths_Workings.pdf"
-                    className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] py-2.5 pl-9 pr-3 text-sm text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+                    className="w-full rounded-xl border border-[#E7E5E4] dark:border-slate-700 bg-[#F8F7F4] dark:bg-slate-800 py-2.5 pl-9 pr-3 text-sm text-[#18181B] dark:text-slate-100 focus:border-[#4338CA] focus:bg-white focus:outline-none"
                   />
                 </div>
               </div>
 
-              <div className="rounded-xl border border-[#E7E5E4] bg-[#FAF9F7] p-4 text-xs text-[#52525B] space-y-1.5">
-                <div className="flex justify-between font-semibold text-[#18181B]">
+              <div className="rounded-xl border border-[#E7E5E4] dark:border-slate-700 bg-[#FAF9F7] dark:bg-slate-800 p-4 text-xs text-[#52525B] dark:text-slate-300 space-y-1.5">
+                <div className="flex justify-between font-semibold text-[#18181B] dark:text-slate-100">
                   <span>Page Format:</span>
                   <span>A4 Portrait (210 × 297 mm)</span>
                 </div>
-                <div className="flex justify-between font-semibold text-[#18181B]">
+                <div className="flex justify-between font-semibold text-[#18181B] dark:text-slate-100">
                   <span>Total Pages:</span>
                   <span>{pages.length} page(s)</span>
                 </div>
-                <div className="flex justify-between font-semibold text-[#18181B]">
+                <div className="flex justify-between font-semibold text-[#18181B] dark:text-slate-100">
                   <span>Orientation:</span>
                   <span>Standardized Centered Margins</span>
                 </div>
@@ -610,7 +610,7 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
                 type="button"
                 onClick={handleDownloadPdf}
                 disabled={isGenerating}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#18181B] bg-[#FFFFFF] px-5 py-3 text-xs font-semibold text-[#18181B] hover:bg-[#18181B] hover:text-white transition-colors"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-[#18181B] bg-[#FFFFFF] dark:bg-slate-900 px-5 py-3 text-xs font-semibold text-[#18181B] dark:text-slate-100 hover:bg-[#18181B] hover:text-white transition-colors"
               >
                 {isGenerating ? (
                   <Loader2 className="h-4 w-4 animate-spin text-[#4338CA]" />
@@ -628,14 +628,14 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
                 <span>Submit Directly to an Open Assignment</span>
               </div>
 
-              <p className="text-xs text-[#52525B]">
+              <p className="text-xs text-[#52525B] dark:text-slate-300">
                 Attach this generated PDF directly to one of your active coursework tasks without
                 downloading and re-uploading manually.
               </p>
 
               <form onSubmit={handleSubmitToAssignment} className="space-y-4">
                 <div className="space-y-1.5">
-                  <label htmlFor="submit-asg-select" className="block text-xs font-semibold text-[#18181B]">
+                  <label htmlFor="submit-asg-select" className="block text-xs font-semibold text-[#18181B] dark:text-slate-100">
                     Select Assignment
                   </label>
                   <select
@@ -643,7 +643,7 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
                     value={selectedAssignmentId}
                     onChange={(e) => setSelectedAssignmentId(e.target.value)}
                     required
-                    className="w-full rounded-xl border border-[#E7E5E4] bg-white px-3.5 py-2.5 text-xs font-semibold text-[#18181B] focus:border-[#4338CA] focus:outline-none"
+                    className="w-full rounded-xl border border-[#E7E5E4] dark:border-slate-700 bg-white px-3.5 py-2.5 text-xs font-semibold text-[#18181B] dark:text-slate-100 focus:border-[#4338CA] focus:outline-none"
                   >
                     <option value="">-- Choose an Open Assignment --</option>
                     {openAssignments.map((asg) => (
@@ -655,7 +655,7 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
                 </div>
 
                 <div className="space-y-1.5">
-                  <label htmlFor="submit-asg-note" className="block text-xs font-semibold text-[#18181B]">
+                  <label htmlFor="submit-asg-note" className="block text-xs font-semibold text-[#18181B] dark:text-slate-100">
                     Note for Abdullah (Optional)
                   </label>
                   <input
@@ -664,7 +664,7 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
                     value={submissionNote}
                     onChange={(e) => setSubmissionNote(e.target.value)}
                     placeholder="e.g. Completed all questions including Question 6 challenge"
-                    className="w-full rounded-xl border border-[#E7E5E4] bg-white px-3.5 py-2 text-xs text-[#18181B] focus:border-[#4338CA] focus:outline-none"
+                    className="w-full rounded-xl border border-[#E7E5E4] dark:border-slate-700 bg-white px-3.5 py-2 text-xs text-[#18181B] dark:text-slate-100 focus:border-[#4338CA] focus:outline-none"
                   />
                 </div>
 

@@ -379,7 +379,7 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by name or email..."
-              className="w-full rounded-full border border-slate-200 dark:border-slate-800 bg-white py-1.5 pl-8 pr-3 text-xs text-slate-900 dark:text-slate-100 focus:border-[#4338CA] focus:outline-none"
+              className="w-full rounded-full border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-1.5 pl-8 pr-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#4338CA] focus:outline-none"
             />
           </div>
         </div>
