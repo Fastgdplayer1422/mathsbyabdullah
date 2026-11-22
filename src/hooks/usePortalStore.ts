@@ -215,7 +215,16 @@ async function loadPortalState(): Promise<{ state: PortalState; errors: string[]
       submittedAt: row.submitted_at || row.created_at || new Date().toISOString(),
       grade: row.grade || undefined,
       teacherFeedback: row.teacher_feedback || undefined,
-      attachment: await signedAttachment('student-submissions', row.storage_path, row.file_name, row.file_size, row.file_type),
+      attachment: row.file_name && row.file_name !== 'No student attachment'
+        ? await signedAttachment('student-submissions', row.storage_path, row.file_name, row.file_size, row.file_type)
+        : undefined,
+      reviewAttachment: await signedAttachment(
+        'student-submissions',
+        row.review_storage_path,
+        row.review_file_name,
+        row.review_file_size,
+        row.review_file_type,
+      ),
     };
   }));
 
@@ -305,14 +314,21 @@ async function syncChanges(previous: PortalState, next: PortalState) {
   }, 'materials');
   await changed(previous.submissions, next.submissions, async (s: any) => {
     const storagePath = s.attachment?.fileData?.startsWith('data:') ? await uploadAttachment('student-submissions', `${s.studentId}/${s.id}.pdf`, s.attachment) : s.attachment?.storagePath || null;
+    const reviewStoragePath = s.reviewAttachment?.fileData?.startsWith('data:')
+      ? await uploadAttachment('student-submissions', `${s.reviewAttachment.storagePath || s.id + '/review.pdf'}`, s.reviewAttachment)
+      : s.reviewAttachment?.storagePath || null;
     const studentUuid = databaseUuid(s.studentId) || s.studentId;
     const assignmentUuid = databaseUuid(s.assignmentId) || s.assignmentId;
     return {
       id: s.id, assignment_id: assignmentUuid, student_id: studentUuid, user_id: studentUuid, status: s.status,
       submission_url: s.submissionUrl || null, submission_note: s.submissionNote || null,
       submitted_at: isoDate(s.submittedAt), grade: s.grade || null, teacher_feedback: s.teacherFeedback || null,
-      storage_path: storagePath, file_name: s.attachment?.fileName || null, file_size: s.attachment?.fileSize || null,
-      file_type: 'application/pdf',
+      storage_path: storagePath || 'no-student-file', file_name: s.attachment?.fileName || 'No student attachment', file_size: s.attachment?.fileSize || 0,
+      file_type: s.attachment?.fileType || 'application/pdf',
+      review_storage_path: reviewStoragePath,
+      review_file_name: s.reviewAttachment?.fileName || null,
+      review_file_size: s.reviewAttachment?.fileSize || null,
+      review_file_type: s.reviewAttachment?.fileType || null,
     };
   }, 'submissions');
   await changed(previous.activityLogs, next.activityLogs, (l: StudentActivityLog) => ({
@@ -725,7 +741,7 @@ export function usePortalStore() {
     }
   }, []);
 
-  const gradeAssignment = useCallback(async (assignmentId: string, studentId: string, grade: string, teacherFeedback: string) => {
+  const gradeAssignment = useCallback(async (assignmentId: string, studentId: string, grade: string, teacherFeedback: string, reviewAttachment?: UploadedFileMeta) => {
     const cleanGrade = grade.trim();
     const cleanFeedback = teacherFeedback.trim();
     const now = new Date().toISOString();
@@ -743,6 +759,7 @@ export function usePortalStore() {
         ...existing,
         grade: cleanGrade,
         teacherFeedback: cleanFeedback,
+        reviewAttachment: reviewAttachment || existing?.reviewAttachment,
         submittedAt: existing?.submittedAt || now,
       };
       updatedSubmission = next;
@@ -768,22 +785,48 @@ export function usePortalStore() {
 
     try {
       if (updatedSubmission) {
+        const { data: authData } = await supabase.auth.getUser();
+        const teacherId = authData.user?.id;
+        const reviewStoragePath = reviewAttachment?.fileData?.startsWith('data:')
+          ? `${teacherId || studentId}/reviews/${studentId}/${updatedSubmission.id}.pdf`
+          : reviewAttachment?.storagePath || updatedSubmission.reviewAttachment?.storagePath || null;
+        if (reviewAttachment?.fileData?.startsWith('data:')) {
+          await uploadAttachment('student-submissions', reviewStoragePath!, reviewAttachment);
+        }
         const payload = {
           id: updatedSubmission.id,
           assignment_id: databaseUuid(assignmentId) || assignmentId,
           student_id: databaseUuid(studentId) || studentId,
+          user_id: databaseUuid(studentId) || studentId,
           status: 'Graded',
+          submission_url: updatedSubmission.submissionUrl || '',
+          submission_note: updatedSubmission.submissionNote || null,
+          submitted_at: isoDate(updatedSubmission.submittedAt),
           grade: cleanGrade,
           teacher_feedback: cleanFeedback,
+          storage_path: updatedSubmission.attachment?.storagePath || (updatedSubmission.attachment ? `${studentId}/${updatedSubmission.id}.pdf` : 'no-student-file'),
+          file_name: updatedSubmission.attachment?.fileName || 'No student attachment',
+          file_size: updatedSubmission.attachment?.fileSize || 0,
+          file_type: updatedSubmission.attachment?.fileType || 'application/pdf',
+          review_storage_path: reviewStoragePath,
+          review_file_name: reviewAttachment?.fileName || updatedSubmission.reviewAttachment?.fileName || null,
+          review_file_size: reviewAttachment?.fileSize || updatedSubmission.reviewAttachment?.fileSize || null,
+          review_file_type: reviewAttachment?.fileType || updatedSubmission.reviewAttachment?.fileType || null,
         };
-        await writeWithOptionalColumns('submissions', [payload], (candidate) =>
+        const { error } = await writeWithOptionalColumns('submissions', [payload], (candidate) =>
           supabase.from('submissions').upsert(candidate, { onConflict: 'id' })
         );
+        if (error) throw error;
+        await refreshPortalData();
+        return true;
       }
+      return false;
     } catch (err) {
       console.warn('[Supabase] Grade assignment write notice', err);
+      setLoadError(`save grade: ${getPortalErrorMessage(err)}`);
+      return false;
     }
-  }, []);
+  }, [refreshPortalData]);
   const addMaterial = useCallback(async (material: Omit<StudyMaterial, 'id'>) => {
     const materialId = id();
     try {

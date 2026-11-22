@@ -23,6 +23,7 @@ import {
 } from '../../types/portal';
 import { formatReadableDate } from '../../utils/formatters';
 import { downloadDataUrl, formatFileSize, readFileAsDataUrl } from '../../utils/fileHelpers';
+import { PdfPreviewDialog } from '../PdfPreviewDialog';
 
 interface StudentAssignmentsProps {
   state: PortalState;
@@ -86,6 +87,7 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
   const [submissionAttachment, setSubmissionAttachment] = useState<UploadedFileMeta | null>(null);
   const [uploadError, setUploadError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState<UploadedFileMeta | null>(null);
 
   const enrolledCourseIds = activeStudent?.enrolledCourseIds ?? [];
 
@@ -125,6 +127,7 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
         submittedAt: sub?.submittedAt,
         grade: sub?.grade,
         teacherFeedback: sub?.teacherFeedback,
+        reviewAttachment: sub?.reviewAttachment,
       };
     });
   }, [studentAssignments, state.submissions, activeStudent]);
@@ -225,6 +228,13 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
 
   return (
     <div className="space-y-6">
+      {previewAttachment && (
+        <PdfPreviewDialog
+          src={previewAttachment.fileData}
+          fileName={previewAttachment.fileName}
+          onClose={() => setPreviewAttachment(null)}
+        />
+      )}
       {/* Header Row */}
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="space-y-1">
@@ -366,6 +376,18 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
                             {assignment.teacherFeedback}
                           </p>
                         )}
+                        {assignment.reviewAttachment && (
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <span className="text-xs font-medium text-teal-800 dark:text-teal-200">Tutor review PDF: {assignment.reviewAttachment.fileName}</span>
+                            <button
+                              type="button"
+                              onClick={() => setPreviewAttachment(assignment.reviewAttachment!)}
+                              className="rounded-lg border border-teal-300 bg-white px-3 py-1.5 text-xs font-semibold text-teal-800 hover:bg-teal-50 dark:border-teal-800 dark:bg-slate-900 dark:text-teal-200 dark:hover:bg-teal-950"
+                            >
+                              Preview / Download PDF
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -393,11 +415,11 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
                           {assignment.submissionAttachment && (
                             <button
                               type="button"
-                              onClick={() => downloadDataUrl(assignment.submissionAttachment!.fileData, assignment.submissionAttachment!.fileName)}
+                              onClick={() => setPreviewAttachment(assignment.submissionAttachment!)}
                               className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
                             >
-                              <Download className="h-3.5 w-3.5" aria-hidden="true" />
-                              Download submitted PDF
+                              <FileCheck2 className="h-3.5 w-3.5" aria-hidden="true" />
+                              Preview submitted PDF
                             </button>
                           )}
                           {assignment.submissionNote && (
@@ -414,7 +436,7 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
                     {assignment.attachment ? (
                       <button
                         type="button"
-                        onClick={() => downloadDataUrl(assignment.attachment!.fileData, assignment.attachment!.fileName)}
+                        onClick={() => setPreviewAttachment(assignment.attachment!)}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 transition-colors hover:border-slate-400 dark:hover:border-slate-600 whitespace-nowrap shrink-0"
                       >
                         <span>Download {assignment.attachment.fileName}</span>

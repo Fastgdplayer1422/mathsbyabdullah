@@ -331,7 +331,8 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                 id="create-classes-per-week"
                 value={classesPerWeek}
                 onChange={(e) => handleClassesPerWeekChange(Number(e.target.value))}
-                className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white px-2.5 py-1 text-xs font-semibold text-slate-900 dark:text-slate-100 focus:border-[#4338CA] focus:outline-none"
+                className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-semibold text-slate-900 dark:text-slate-100 focus:border-[#4338CA] focus:outline-none"
+                style={{ colorScheme: 'light dark' }}
               >
                 <option value={1}>1 class / week</option>
                 <option value={2}>2 classes / week</option>

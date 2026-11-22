@@ -12,6 +12,7 @@ import {
 import {
   Assignment,
   Course,
+  UploadedFileMeta,
   LiveSessionHero,
   PortalState,
   ScheduleSession,
@@ -52,8 +53,9 @@ interface TeacherAdminProps {
     assignmentId: string,
     studentId: string,
     grade: string,
-    teacherFeedback: string
-  ) => void;
+    teacherFeedback: string,
+  reviewAttachment?: UploadedFileMeta
+  ) => Promise<boolean>;
   onDeleteAssignment: (id: string) => void;
   onAddMaterial: (material: Omit<StudyMaterial, 'id'>) => Promise<boolean>;
   onDeleteMaterial: (id: string) => void;

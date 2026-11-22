@@ -25,6 +25,7 @@ import {
 } from '../../types/portal';
 import { downloadDataUrl, formatFileSize, readFileAsDataUrl } from '../../utils/fileHelpers';
 import { formatReadableDate } from '../../utils/formatters';
+import { PdfPreviewDialog } from '../PdfPreviewDialog';
 
 interface ContentManagerProps {
   state: PortalState;
@@ -34,8 +35,9 @@ interface ContentManagerProps {
     assignmentId: string,
     studentId: string,
     grade: string,
-    teacherFeedback: string
-  ) => void;
+    teacherFeedback: string,
+    reviewAttachment?: UploadedFileMeta
+  ) => Promise<boolean>;
   onDeleteAssignment: (id: string) => void;
   onAddMaterial: (material: Omit<StudyMaterial, 'id'>) => Promise<boolean>;
   onDeleteMaterial: (id: string) => void;
@@ -85,6 +87,8 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
   } | null>(null);
   const [gradeValue, setGradeValue] = useState('');
   const [feedbackValue, setFeedbackValue] = useState('');
+  const [reviewAttachment, setReviewAttachment] = useState<UploadedFileMeta | null>(null);
+  const [previewAttachment, setPreviewAttachment] = useState<UploadedFileMeta | null>(null);
   const [savingAction, setSavingAction] = useState<string | null>(null);
 
   const saveWithFeedback = async (action: string, save: () => Promise<boolean>) => {
@@ -234,17 +238,48 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
     setGradingModalData({ asg, studentId, studentName, sub });
     setGradeValue(sub?.grade ?? '');
     setFeedbackValue(sub?.teacherFeedback ?? '');
+    setReviewAttachment(sub?.reviewAttachment ?? null);
   };
 
-  const handleSaveGrade = (e: React.FormEvent) => {
+  const handleReviewPdfSelect = async (file?: File) => {
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) {
+      onNotify('Choose a PDF smaller than 20 MB.');
+      return;
+    }
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      onNotify('Choose a PDF file to attach to this review.');
+      return;
+    }
+    try {
+      const header = new TextDecoder().decode(await file.slice(0, 1024).arrayBuffer());
+      if (!header.includes('%PDF-')) {
+        onNotify('This file does not appear to be a valid PDF.');
+        return;
+      }
+      const fileData = await readFileAsDataUrl(file);
+      setReviewAttachment({ fileName: file.name, fileSize: file.size, fileType: 'application/pdf', fileData });
+    } catch {
+      onNotify('Could not read this PDF. Please choose a valid file and try again.');
+    }
+  };
+
+  const handleSaveGrade = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!gradingModalData || !gradeValue.trim()) return;
-    onGradeAssignment(
+    setSavingAction('grade');
+    const saved = await onGradeAssignment(
       gradingModalData.asg.id,
       gradingModalData.studentId,
       gradeValue.trim(),
-      feedbackValue.trim()
+      feedbackValue.trim(),
+      reviewAttachment || undefined,
     );
+    setSavingAction(null);
+    if (!saved) {
+      onNotify('Grade could not be saved. Please try again.');
+      return;
+    }
     onNotify(`Recorded grade for ${gradingModalData.studentName}`);
     setGradingModalData(null);
   };
@@ -545,16 +580,16 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                               return (
                                 <div
                                   key={std.id}
-                                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white p-2.5 text-xs border border-[#F4F4F5]"
+                                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white p-2.5 text-xs dark:border-slate-700 dark:bg-slate-900"
                                 >
                                   <div className="flex flex-wrap items-center gap-2 min-w-0">
                                     <span className="font-semibold text-slate-900 dark:text-slate-100">{std.name}</span>
                                     <span
                                       className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
                                         status === 'Graded'
-                                          ? 'bg-teal-50 text-teal-700 border border-teal-200'
+                                          ? 'bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-900/60'
                                           : status === 'Submitted'
-                                          ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                          ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-900/60'
                                           : 'bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-900/60'
                                       }`}
                                     >
@@ -562,16 +597,16 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                                       {sub?.grade ? ` (${sub.grade})` : ''}
                                     </span>
 
-                                    {/* Download Student Submitted PDF Button */}
+                                    {/* Preview and download the student's submitted PDF */}
                                     {sub?.attachment ? (
                                       <button
                                         type="button"
-                                        onClick={() => downloadDataUrl(sub.attachment!.fileData, sub.attachment!.fileName)}
-                                        className="inline-flex items-center gap-1 rounded-md bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-900/60 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-[#E0E7FF]"
-                                        title={`Download ${sub.attachment.fileName}`}
+                                        onClick={() => setPreviewAttachment(sub.attachment!)}
+                                        className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/50 dark:text-indigo-300 dark:hover:bg-indigo-950"
+                                        title={`Preview ${sub.attachment.fileName}`}
                                       >
                                         <FileCheck className="h-3 w-3" />
-                                        <span>Download PDF ({formatFileSize(sub.attachment.fileSize)})</span>
+                                        <span>Preview PDF ({formatFileSize(sub.attachment.fileSize)})</span>
                                       </button>
                                     ) : sub?.submissionUrl ? (
                                       <a
@@ -1002,7 +1037,15 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
         </div>
       )}
 
-      {/* Grade Modal with Student's Submitted PDF Download */}
+      {previewAttachment && (
+        <PdfPreviewDialog
+          src={previewAttachment.fileData}
+          fileName={previewAttachment.fileName}
+          onClose={() => setPreviewAttachment(null)}
+        />
+      )}
+
+      {/* Grade Modal with student work and tutor review PDF */}
       {gradingModalData && (
         <div
           role="dialog"
@@ -1045,11 +1088,11 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                 </p>
                 <button
                   type="button"
-                  onClick={() => downloadDataUrl(gradingModalData.sub!.attachment!.fileData, gradingModalData.sub!.attachment!.fileName)}
+                  onClick={() => setPreviewAttachment(gradingModalData.sub!.attachment!)}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#4338CA] py-2 text-xs font-semibold text-white hover:bg-[#3730A3]"
                 >
-                  <Download className="h-3.5 w-3.5" />
-                  <span>Download / View Student PDF</span>
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>Preview Student PDF</span>
                 </button>
               </div>
             ) : gradingModalData.sub?.submissionUrl ? (
@@ -1074,7 +1117,31 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
               </div>
             )}
 
+            {gradingModalData.sub?.reviewAttachment && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs dark:border-teal-900/60 dark:bg-teal-950/40">
+                <span className="min-w-0 truncate font-semibold text-teal-900 dark:text-teal-200">Existing review PDF: {gradingModalData.sub.reviewAttachment.fileName}</span>
+                <button type="button" onClick={() => setPreviewAttachment(gradingModalData.sub!.reviewAttachment!)} className="font-semibold text-teal-800 underline dark:text-teal-300">Preview</button>
+              </div>
+            )}
             <form onSubmit={handleSaveGrade} className="space-y-4 pt-1">
+              <div className="space-y-1.5">
+                <label htmlFor="review-pdf" className="block text-xs font-semibold text-slate-900 dark:text-slate-100">PDF attached to graded review</label>
+                <input
+                  id="review-pdf"
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={(event) => void handleReviewPdfSelect(event.target.files?.[0])}
+                  className="block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-600 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                />
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">Optional PDF, up to 20 MB. Students can preview and download it after grading.</p>
+                {reviewAttachment && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="min-w-0 truncate font-medium text-slate-700 dark:text-slate-300">{reviewAttachment.fileName}</span>
+                    <button type="button" onClick={() => setPreviewAttachment(reviewAttachment)} className="font-semibold text-indigo-600 hover:underline dark:text-indigo-400">Preview</button>
+                    <button type="button" onClick={() => setReviewAttachment(null)} className="font-semibold text-rose-600 hover:underline dark:text-rose-400">Remove</button>
+                  </div>
+                )}
+              </div>
               <div className="space-y-1.5">
                 <label className="block text-xs font-semibold text-slate-900 dark:text-slate-100">
                   Score / Grade
@@ -1112,9 +1179,12 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="rounded-full bg-[#0F766E] px-5 py-2 text-xs font-semibold text-white hover:bg-[#115E59]"
+                  disabled={savingAction !== null}
+                  aria-busy={savingAction === 'grade'}
+                  className="inline-flex items-center gap-2 rounded-full bg-[#0F766E] px-5 py-2 text-xs font-semibold text-white hover:bg-[#115E59] disabled:cursor-wait disabled:opacity-60"
                 >
-                  Save Grade
+                  {savingAction === 'grade' && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                  {savingAction === 'grade' ? 'Saving…' : 'Save Grade'}
                 </button>
               </div>
             </form>
