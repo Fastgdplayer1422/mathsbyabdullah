@@ -206,7 +206,11 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
     }
     setIsSubmitting(true);
     try {
-      await onSubmitAssignment(activeModalAssignment.id, activeStudent.id, '', submissionNote, submissionAttachment);
+      const result = await onSubmitAssignment(activeModalAssignment.id, activeStudent.id, '', submissionNote, submissionAttachment);
+      if (result && result.success === false) {
+        setUploadError(result.error || 'Submission could not be saved. Please try again.');
+        return;
+      }
       onNotify(`Submitted "${activeModalAssignment.title}"`);
       setActiveModalAssignment(null);
       setSubmissionUrl('');

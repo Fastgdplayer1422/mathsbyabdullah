@@ -81,6 +81,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     try {
       const result = await onStudentLogin(studentEmail.trim().toLowerCase(), studentPassword, studentRememberMe);
       if (result.error) setErrorMessage(result.error);
+    } catch {
+      setErrorMessage('Unable to sign in right now. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -127,6 +129,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           : 'Registration submitted. Your account is pending teacher approval.'
       );
       setStudentMode('signin');
+    } catch {
+      setErrorMessage('Registration could not be completed. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -140,6 +144,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     try {
       const result = await onTeacherLogin(teacherEmail.trim().toLowerCase(), teacherPassword.trim(), teacherRememberMe);
       if (result.error) setErrorMessage(result.error);
+    } catch {
+      setErrorMessage('Unable to sign in right now. Please try again.');
     } finally {
       setIsSubmitting(false);
     }

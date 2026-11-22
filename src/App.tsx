@@ -122,7 +122,8 @@ export default function App() {
   }, [loadAuthenticatedRole]);
 
   const handleSignOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
     setSession(null);
     notify('Signed out of MathsByAbdullah');
   }, [notify]);

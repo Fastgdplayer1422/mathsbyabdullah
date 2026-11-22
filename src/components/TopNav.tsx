@@ -42,11 +42,15 @@ export const TopNav: React.FC<TopNavProps> = ({
 }) => {
   const { theme, toggleTheme } = useTheme();
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState(false);
 
   const handleSignOutClick = async () => {
     setIsSigningOut(true);
+    setSignOutError(false);
     try {
       await onSignOut();
+    } catch {
+      setSignOutError(true);
     } finally {
       setIsSigningOut(false);
     }
@@ -178,6 +182,7 @@ export const TopNav: React.FC<TopNavProps> = ({
             </span>
           </div>
 
+          {signOutError && <span role="alert" className="max-w-24 text-[10px] font-medium text-red-600 dark:text-red-400">Sign-out failed</span>}
           {/* Sign Out Button with Loading Spinner */}
           <button
             type="button"
