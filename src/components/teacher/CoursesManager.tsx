@@ -4,6 +4,7 @@ import {
   Calendar,
   Check,
   Clock,
+  Loader2,
   Pencil,
   Plus,
   Trash2,
@@ -86,6 +87,16 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [editClassesPerWeek, setEditClassesPerWeek] = useState<number>(2);
   const [editWeeklySlots, setEditWeeklySlots] = useState<WeeklyScheduleSlot[]>([]);
+  const [savingAction, setSavingAction] = useState<'create' | 'edit' | null>(null);
+
+  const saveWithFeedback = async (action: 'create' | 'edit', save: () => Promise<boolean>) => {
+    setSavingAction(action);
+    try {
+      return await save();
+    } finally {
+      setSavingAction(null);
+    }
+  };
 
   const studentsByCourse = useMemo(() => {
     const map: Record<string, Student[]> = {};
@@ -125,7 +136,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
     if (!title.trim() || !batchName.trim()) return;
 
     const formattedCadence = formatWeeklySlots(weeklySlots);
-    const saved = await onAddCourse({
+    const saved = await saveWithFeedback('create', () => onAddCourse({
       code: code.trim() || 'ACAD-01',
       title: title.trim(),
       batchName: batchName.trim(),
@@ -135,7 +146,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
       weeklySlots,
       scheduleCadence: formattedCadence,
       description: description.trim(),
-    });
+    }));
     if (!saved) return;
 
     setCode('');
@@ -178,7 +189,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
     if (!editingCourse) return;
 
     const formattedCadence = formatWeeklySlots(editWeeklySlots);
-    const saved = await onUpdateCourse(editingCourse.id, {
+    const saved = await saveWithFeedback('edit', () => onUpdateCourse(editingCourse.id, {
       code: editingCourse.code.trim(),
       title: editingCourse.title.trim(),
       batchName: editingCourse.batchName.trim(),
@@ -188,7 +199,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
       weeklySlots: editWeeklySlots,
       scheduleCadence: formattedCadence,
       description: editingCourse.description?.trim(),
-    });
+    }));
     if (!saved) return;
 
     onNotify(`Updated course "${editingCourse.title}"`);
@@ -200,20 +211,20 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
       {/* Create Course Form */}
       <form
         onSubmit={handleCreate}
-        className="space-y-4 rounded-3xl border border-[#E7E5E4] bg-[#FFFFFF] p-6 shadow-sm lg:col-span-5"
+        className="space-y-4 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm lg:col-span-5"
       >
-        <div className="space-y-1 border-b border-[#E7E5E4] pb-3.5">
-          <h2 className="font-display text-lg font-bold text-[#18181B]">
+        <div className="space-y-1 border-b border-slate-200 dark:border-slate-800 pb-3.5">
+          <h2 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">
             Create Course / Batch
           </h2>
-          <p className="text-xs text-[#52525B]">
+          <p className="text-xs text-slate-600 dark:text-slate-400">
             Add a new subject cohort with structured weekly timetable for student enrollment.
           </p>
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <label htmlFor="course-code" className="block text-xs font-semibold text-[#18181B]">
+            <label htmlFor="course-code" className="block text-xs font-semibold text-slate-900 dark:text-slate-100">
               Subject / Code Tag
             </label>
             <input
@@ -223,12 +234,12 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
               value={code}
               onChange={(e) => setCode(e.target.value)}
               placeholder="e.g. IGCSE 0580"
-              className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3.5 py-2.5 text-sm text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:border-[#4338CA] focus:bg-white focus:outline-none"
             />
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="course-instructor" className="block text-xs font-semibold text-[#18181B]">
+            <label htmlFor="course-instructor" className="block text-xs font-semibold text-slate-900 dark:text-slate-100">
               Lead Instructor
             </label>
             <input
@@ -238,13 +249,13 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
               value={instructor}
               onChange={(e) => setInstructor(e.target.value)}
               placeholder="Abdullah"
-              className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3.5 py-2.5 text-sm text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:border-[#4338CA] focus:bg-white focus:outline-none"
             />
           </div>
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="course-title" className="block text-xs font-semibold text-[#18181B]">
+          <label htmlFor="course-title" className="block text-xs font-semibold text-slate-900 dark:text-slate-100">
             Course Name
           </label>
           <input
@@ -254,12 +265,12 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="e.g. IGCSE Mathematics"
-            className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3.5 py-2.5 text-sm text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:border-[#4338CA] focus:bg-white focus:outline-none"
           />
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="course-batch" className="block text-xs font-semibold text-[#18181B]">
+          <label htmlFor="course-batch" className="block text-xs font-semibold text-slate-900 dark:text-slate-100">
             Batch / Cohort Name
           </label>
           <input
@@ -269,18 +280,18 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
             value={batchName}
             onChange={(e) => setBatchName(e.target.value)}
             placeholder="e.g. Extended Group A"
-            className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3.5 py-2.5 text-sm text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:border-[#4338CA] focus:bg-white focus:outline-none"
           />
         </div>
 
         {/* Accent Color Picker */}
         <div className="space-y-1.5">
-          <span className="block text-xs font-semibold text-[#18181B]">Accent Color</span>
+          <span className="block text-xs font-semibold text-slate-900 dark:text-slate-100">Accent Color</span>
           <div className="flex items-center gap-2 pt-0.5">
             {(
               [
                 { id: 'indigo', label: 'Indigo', bg: 'bg-[#4338CA]' },
-                { id: 'orange', label: 'Amber Orange', bg: 'bg-[#EA580C]' },
+                { id: 'orange', label: 'Muted Teal', bg: 'bg-teal-700' },
                 { id: 'teal', label: 'Emerald Teal', bg: 'bg-[#0F766E]' },
               ] as const
             ).map((color) => (
@@ -304,29 +315,28 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
         {/* ---------------------------------------------------- */}
         {/* DROPDOWN-BASED WEEKLY TIMETABLE                      */}
         {/* ---------------------------------------------------- */}
-        <div className="space-y-3 rounded-2xl border border-[#E7E5E4] bg-[#F8F7F4] p-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-[#E7E5E4] pb-2.5">
+        <div className="space-y-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 dark:border-slate-800 pb-2.5">
             <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-[#4338CA]" />
-              <span className="text-xs font-bold text-[#18181B]">Recurring Weekly Timetable</span>
+              <Calendar className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              <span className="text-xs font-bold text-slate-900 dark:text-slate-100">Recurring Weekly Timetable</span>
             </div>
 
             {/* 1. Classes per Week Dropdown */}
             <div className="flex items-center gap-2">
-              <label htmlFor="create-classes-per-week" className="text-xs font-medium text-[#71717A] whitespace-nowrap">
+              <label htmlFor="create-classes-per-week" className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
                 Frequency:
               </label>
               <select
                 id="create-classes-per-week"
                 value={classesPerWeek}
                 onChange={(e) => handleClassesPerWeekChange(Number(e.target.value))}
-                className="rounded-lg border border-[#E7E5E4] bg-white px-2.5 py-1 text-xs font-semibold text-[#18181B] focus:border-[#4338CA] focus:outline-none"
+                className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-semibold text-slate-900 dark:text-slate-100 focus:border-[#4338CA] focus:outline-none"
+                style={{ colorScheme: 'light dark' }}
               >
                 <option value={1}>1 class / week</option>
                 <option value={2}>2 classes / week</option>
                 <option value={3}>3 classes / week</option>
-                <option value={4}>4 classes / week</option>
-                <option value={5}>5 classes / week</option>
               </select>
             </div>
           </div>
@@ -336,14 +346,14 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
             {weeklySlots.map((slot, idx) => (
               <div
                 key={idx}
-                className="rounded-xl border border-[#E7E5E4] bg-white p-2.5 shadow-2xs space-y-1.5"
+                className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2.5 shadow-2xs space-y-1.5"
               >
-                <div className="flex items-center justify-between text-[11px] font-semibold text-[#71717A]">
-                  <span className="flex items-center gap-1.5 text-[#18181B]">
-                    <Clock className="h-3 w-3 text-[#EA580C]" />
+                <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                  <span className="flex items-center gap-1.5 text-slate-900 dark:text-slate-100">
+                    <Clock className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
                     <span>Slot #{idx + 1}</span>
                   </span>
-                  <span className="font-mono text-[#4338CA]">
+                  <span className="font-mono text-indigo-600 dark:text-indigo-400">
                     {slot.day} • {slot.startTime} ({slot.duration})
                   </span>
                 </div>
@@ -357,7 +367,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                       onChange={(e) =>
                         handleUpdateSlot(idx, { day: e.target.value as DayOfWeek })
                       }
-                      className="w-full rounded-lg border border-[#E7E5E4] bg-[#F8F7F4] px-2.5 py-1.5 text-xs font-medium text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+                      className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-medium text-slate-900 dark:text-slate-100 focus:border-[#4338CA] focus:bg-white focus:outline-none"
                     >
                       {DAY_OPTIONS.map((d) => (
                         <option key={d} value={d}>
@@ -375,7 +385,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                       onChange={(e) =>
                         handleUpdateSlot(idx, { startTime: e.target.value })
                       }
-                      className="w-full rounded-lg border border-[#E7E5E4] bg-[#F8F7F4] px-2.5 py-1.5 text-xs font-medium text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+                      className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-medium text-slate-900 dark:text-slate-100 focus:border-[#4338CA] focus:bg-white focus:outline-none"
                     >
                       {START_TIME_OPTIONS.map((t) => (
                         <option key={t} value={t}>
@@ -393,7 +403,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                       onChange={(e) =>
                         handleUpdateSlot(idx, { duration: e.target.value })
                       }
-                      className="w-full rounded-lg border border-[#E7E5E4] bg-[#F8F7F4] px-2.5 py-1.5 text-xs font-medium text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+                      className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-medium text-slate-900 dark:text-slate-100 focus:border-[#4338CA] focus:bg-white focus:outline-none"
                     >
                       {DURATION_OPTIONS.map((dur) => (
                         <option key={dur} value={dur}>
@@ -408,16 +418,16 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
           </div>
 
           {/* Formatted Schedule Summary */}
-          <div className="flex items-center justify-between text-[11px] pt-1 text-[#71717A]">
+          <div className="flex items-center justify-between text-[11px] pt-1 text-slate-500 dark:text-slate-400">
             <span>Schedule Summary:</span>
-            <span className="font-semibold text-[#18181B]">
+            <span className="font-semibold text-slate-900 dark:text-slate-100">
               {formatWeeklySlots(weeklySlots)}
             </span>
           </div>
         </div>
 
         <div className="space-y-1.5">
-          <label htmlFor="course-desc" className="block text-xs font-semibold text-[#18181B]">
+          <label htmlFor="course-desc" className="block text-xs font-semibold text-slate-900 dark:text-slate-100">
             Description (Optional)
           </label>
           <textarea
@@ -426,32 +436,34 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Key syllabus topics, exam boards (Cambridge / Edexcel)..."
-            className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3.5 py-2.5 text-sm text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:border-[#4338CA] focus:bg-white focus:outline-none"
           />
         </div>
 
         <button
           type="submit"
-          className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#18181B] px-5 py-3 text-xs font-semibold text-white transition-colors hover:bg-[#27272A] shadow-sm"
+          disabled={savingAction !== null}
+          aria-busy={savingAction === 'create'}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-900 px-5 py-3 text-xs font-semibold text-white transition-colors hover:bg-slate-800 shadow-sm disabled:cursor-wait disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500"
         >
-          <Plus className="h-4 w-4 text-[#F97316]" aria-hidden="true" />
-          <span>Create Course Batch</span>
+          {savingAction === 'create' ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Plus className="h-4 w-4 text-teal-400" aria-hidden="true" />}
+          <span>{savingAction === 'create' ? 'Creating…' : 'Create Course Batch'}</span>
         </button>
       </form>
 
       {/* Courses List */}
       <div className="space-y-4 lg:col-span-7">
         <div className="flex items-center justify-between">
-          <h2 className="font-display text-lg font-bold text-[#18181B]">
+          <h2 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">
             Active Courses ({state.courses.length})
           </h2>
         </div>
 
         {state.courses.length === 0 ? (
-          <div className="rounded-3xl border border-[#E7E5E4] bg-[#FFFFFF] px-6 py-14 text-center shadow-sm">
+          <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-14 text-center shadow-sm">
             <BookOpen className="mx-auto h-8 w-8 text-[#A1A1AA]" />
-            <p className="mt-3 text-sm font-semibold text-[#18181B]">No courses created yet</p>
-            <p className="mt-1 text-xs text-[#71717A]">
+            <p className="mt-3 text-sm font-semibold text-slate-900 dark:text-slate-100">No courses created yet</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               Create your first subject batch on the left with structured weekly timings to start enrolling students.
             </p>
           </div>
@@ -465,36 +477,36 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
               return (
                 <article
                   key={course.id}
-                  className="rounded-3xl border border-[#E7E5E4] bg-[#FFFFFF] p-5 sm:p-6 shadow-sm transition-colors hover:border-[#D4D4D8]"
+                  className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-sm transition-colors hover:border-[#D4D4D8]"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="space-y-2 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-[#4338CA]">
+                        <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400">
                           {course.code}
                         </span>
                         <span aria-hidden="true" className="text-[#D4D4D8]">
                           ·
                         </span>
-                        <span className="text-xs font-medium text-[#71717A]">
+                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                           {course.instructor}
                         </span>
                       </div>
 
-                      <h3 className="font-display text-base sm:text-lg font-bold text-[#18181B]">
+                      <h3 className="font-display text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
                         {course.title} · {course.batchName}
                       </h3>
 
                       {course.description && (
-                        <p className="text-xs text-[#52525B] leading-relaxed">
+                        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                           {course.description}
                         </p>
                       )}
 
                       {/* Formatted Schedule Tag with Calendar icon */}
                       {formattedSchedule && (
-                        <div className="flex items-center gap-1.5 rounded-lg border border-[#FED7AA]/80 bg-[#FFF7ED] px-2.5 py-1 text-xs font-semibold text-[#C2410C] w-fit">
-                          <Calendar className="h-3.5 w-3.5 text-[#EA580C]" />
+                        <div className="flex items-center gap-1.5 rounded-lg border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 text-xs font-semibold text-indigo-700 dark:text-indigo-300 w-fit">
+                          <Calendar className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
                           <span>{formattedSchedule}</span>
                         </div>
                       )}
@@ -506,7 +518,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                         onClick={() => openEditModal(course)}
                         aria-label={`Edit ${course.title}`}
                         title="Edit course and schedule"
-                        className="rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] p-1.5 text-[#52525B] hover:border-[#18181B] hover:text-[#18181B] transition-colors"
+                        className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1.5 text-slate-600 dark:text-slate-400 hover:border-[#18181B] hover:text-slate-900 dark:text-slate-100 transition-colors"
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
@@ -518,7 +530,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                           onNotify(`Deleted course "${course.title}"`);
                         }}
                         aria-label={`Delete ${course.title}`}
-                        className="rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] p-1.5 text-[#71717A] hover:border-red-300 hover:bg-red-50 hover:text-red-700 transition-colors"
+                        className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1.5 text-slate-500 dark:text-slate-400 hover:border-red-300 hover:bg-red-50 hover:text-red-700 transition-colors"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -528,14 +540,14 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                   {/* Enrolled Students Quick Toggles */}
                   <div className="mt-4 border-t border-[#F4F4F5] pt-3.5">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#18181B]">
-                        <Users className="h-3.5 w-3.5 text-[#71717A]" />
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100">
+                        <Users className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
                         <span>Enrolled Students ({enrolled.length})</span>
                       </span>
                     </div>
 
                     {state.students.length === 0 ? (
-                      <p className="text-xs text-[#71717A]">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
                         No students created yet. Add students in the Students &amp; Approvals tab.
                       </p>
                     ) : (
@@ -554,8 +566,8 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                               }}
                               className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
                                 isEnrolled
-                                  ? 'border-[#4338CA]/30 bg-[#EEF2FF] text-[#4338CA]'
-                                  : 'border-[#E7E5E4] bg-[#F8F7F4] text-[#71717A] hover:border-[#18181B] hover:text-[#18181B]'
+                                  ? 'border-[#4338CA]/30 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400'
+                                  : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:border-[#18181B] hover:text-slate-900 dark:text-slate-100'
                               }`}
                             >
                               <span
@@ -589,16 +601,16 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
           aria-labelledby="edit-course-modal-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-[#18181B]/50 p-4 backdrop-blur-[2px]"
         >
-          <div className="w-full max-w-lg rounded-3xl border border-[#E7E5E4] bg-[#FFFFFF] p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-[#E7E5E4] pb-3.5">
-              <h3 id="edit-course-modal-title" className="font-display text-base font-bold text-[#18181B]">
+          <div className="w-full max-w-lg rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3.5">
+              <h3 id="edit-course-modal-title" className="font-display text-base font-bold text-slate-900 dark:text-slate-100">
                 Edit Course / Batch
               </h3>
               <button
                 type="button"
                 onClick={() => setEditingCourse(null)}
                 aria-label="Close edit course modal"
-                className="rounded-lg p-1 text-[#71717A] hover:bg-[#F4F4F5] hover:text-[#18181B]"
+                className="rounded-lg p-1 text-slate-500 dark:text-slate-400 hover:bg-[#F4F4F5] hover:text-slate-900 dark:text-slate-100"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -607,7 +619,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
             <form onSubmit={handleSaveEdit} className="mt-4 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-[#18181B]">Code Tag</label>
+                  <label className="block text-xs font-semibold text-slate-900 dark:text-slate-100">Code Tag</label>
                   <input
                     type="text"
                     required
@@ -615,11 +627,11 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                     onChange={(e) =>
                       setEditingCourse({ ...editingCourse, code: e.target.value })
                     }
-                    className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-2 text-sm text-[#18181B]"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-[#18181B]">Instructor</label>
+                  <label className="block text-xs font-semibold text-slate-900 dark:text-slate-100">Instructor</label>
                   <input
                     type="text"
                     required
@@ -627,13 +639,13 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                     onChange={(e) =>
                       setEditingCourse({ ...editingCourse, instructor: e.target.value })
                     }
-                    className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-2 text-sm text-[#18181B]"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
                   />
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-[#18181B]">Course Title</label>
+                <label className="block text-xs font-semibold text-slate-900 dark:text-slate-100">Course Title</label>
                 <input
                   type="text"
                   required
@@ -641,12 +653,12 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                   onChange={(e) =>
                     setEditingCourse({ ...editingCourse, title: e.target.value })
                   }
-                  className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-2 text-sm text-[#18181B]"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-[#18181B]">Batch Name</label>
+                <label className="block text-xs font-semibold text-slate-900 dark:text-slate-100">Batch Name</label>
                 <input
                   type="text"
                   required
@@ -654,16 +666,16 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                   onChange={(e) =>
                     setEditingCourse({ ...editingCourse, batchName: e.target.value })
                   }
-                  className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-2 text-sm text-[#18181B]"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
                 />
               </div>
 
               {/* Edit Recurring Weekly Timetable Dropdowns */}
-              <div className="space-y-3 rounded-2xl border border-[#E7E5E4] bg-[#F8F7F4] p-3.5">
-                <div className="flex items-center justify-between border-b border-[#E7E5E4] pb-2">
-                  <span className="text-xs font-bold text-[#18181B]">Weekly Timetable</span>
+              <div className="space-y-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 p-3.5">
+                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+                  <span className="text-xs font-bold text-slate-900 dark:text-slate-100">Weekly Timetable</span>
                   <div className="flex items-center gap-2">
-                    <label htmlFor="edit-classes-per-week" className="text-xs text-[#71717A]">
+                    <label htmlFor="edit-classes-per-week" className="text-xs text-slate-500 dark:text-slate-400">
                       Frequency:
                     </label>
                     <select
@@ -672,7 +684,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                       onChange={(e) =>
                         handleEditClassesPerWeekChange(Number(e.target.value))
                       }
-                      className="rounded-lg border border-[#E7E5E4] bg-white px-2 py-1 text-xs font-semibold text-[#18181B]"
+                      className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white px-2 py-1 text-xs font-semibold text-slate-900 dark:text-slate-100"
                     >
                       <option value={1}>1 class / week</option>
                       <option value={2}>2 classes / week</option>
@@ -687,11 +699,11 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                   {editWeeklySlots.map((slot, idx) => (
                     <div
                       key={idx}
-                      className="rounded-xl border border-[#E7E5E4] bg-white p-2.5 space-y-1"
+                      className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2.5 space-y-1"
                     >
-                      <div className="flex items-center justify-between text-[11px] font-semibold text-[#71717A]">
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                         <span>Slot #{idx + 1}</span>
-                        <span className="font-mono text-[#4338CA]">
+                        <span className="font-mono text-indigo-600 dark:text-indigo-400">
                           {slot.day} • {slot.startTime}
                         </span>
                       </div>
@@ -704,7 +716,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                               day: e.target.value as DayOfWeek,
                             })
                           }
-                          className="rounded-lg border border-[#E7E5E4] bg-[#F8F7F4] px-2 py-1.5 text-xs text-[#18181B]"
+                          className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100"
                         >
                           {DAY_OPTIONS.map((d) => (
                             <option key={d} value={d}>
@@ -718,7 +730,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                           onChange={(e) =>
                             handleUpdateEditSlot(idx, { startTime: e.target.value })
                           }
-                          className="rounded-lg border border-[#E7E5E4] bg-[#F8F7F4] px-2 py-1.5 text-xs text-[#18181B]"
+                          className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100"
                         >
                           {START_TIME_OPTIONS.map((t) => (
                             <option key={t} value={t}>
@@ -732,7 +744,7 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                           onChange={(e) =>
                             handleUpdateEditSlot(idx, { duration: e.target.value })
                           }
-                          className="rounded-lg border border-[#E7E5E4] bg-[#F8F7F4] px-2 py-1.5 text-xs text-[#18181B]"
+                          className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100"
                         >
                           {DURATION_OPTIONS.map((dur) => (
                             <option key={dur} value={dur}>
@@ -745,39 +757,42 @@ export const CoursesManager: React.FC<CoursesManagerProps> = ({
                   ))}
                 </div>
 
-                <div className="text-[11px] text-[#71717A] pt-1 flex justify-between">
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 pt-1 flex justify-between">
                   <span>Summary:</span>
-                  <span className="font-semibold text-[#18181B]">
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
                     {formatWeeklySlots(editWeeklySlots)}
                   </span>
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-[#18181B]">Description</label>
+                <label className="block text-xs font-semibold text-slate-900 dark:text-slate-100">Description</label>
                 <textarea
                   rows={2}
                   value={editingCourse.description || ''}
                   onChange={(e) =>
                     setEditingCourse({ ...editingCourse, description: e.target.value })
                   }
-                  className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-2 text-sm text-[#18181B]"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 border-t border-[#E7E5E4] pt-4">
+              <div className="flex justify-end gap-2 border-t border-slate-200 dark:border-slate-800 pt-4">
                 <button
                   type="button"
                   onClick={() => setEditingCourse(null)}
-                  className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-xs font-semibold text-[#52525B]"
+                  className="rounded-lg border border-slate-200 dark:border-slate-800 px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="rounded-full bg-[#18181B] px-5 py-2 text-xs font-semibold text-white hover:bg-[#27272A]"
+                  disabled={savingAction !== null}
+                  aria-busy={savingAction === 'edit'}
+                  className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500"
                 >
-                  Save Changes
+                  {savingAction === 'edit' && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                  {savingAction === 'edit' ? 'Saving…' : 'Save Changes'}
                 </button>
               </div>
             </form>

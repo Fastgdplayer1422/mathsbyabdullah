@@ -18,6 +18,7 @@ import {
   UserPlus,
   Users,
   UserX,
+  Loader2,
   X,
 } from 'lucide-react';
 import {
@@ -28,8 +29,10 @@ import {
   StudentStatus,
   StudentSubmission,
 } from '../../types/portal';
-import { downloadDataUrl, formatFileSize } from '../../utils/fileHelpers';
+import { downloadDataUrl, formatFileSize, readFileAsDataUrl } from '../../utils/fileHelpers';
 import { formatReadableDate, validateStudentEmail } from '../../utils/formatters';
+import { UploadedFileMeta } from '../../types/portal';
+import { PdfPreviewDialog } from '../PdfPreviewDialog';
 
 interface StudentsManagerProps {
   state: PortalState;
@@ -45,8 +48,9 @@ interface StudentsManagerProps {
     assignmentId: string,
     studentId: string,
     grade: string,
-    feedback: string
-  ) => void;
+    feedback: string,
+    reviewAttachment?: UploadedFileMeta
+  ) => Promise<boolean>;
   onNotify: (msg: string) => void;
 }
 
@@ -74,6 +78,7 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
   const [addNotes, setAddNotes] = useState('');
   const [addCourses, setAddCourses] = useState<string[]>([]);
   const [addEmailError, setAddEmailError] = useState<string | null>(null);
+  const [isAddingStudent, setIsAddingStudent] = useState(false);
 
   // Approve & Enroll Modal
   const [approvingStudent, setApprovingStudent] = useState<Student | null>(null);
@@ -87,6 +92,9 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
   const [gradingSubmission, setGradingSubmission] = useState<StudentSubmission | null>(null);
   const [gradeInput, setGradeInput] = useState('');
   const [feedbackInput, setFeedbackInput] = useState('');
+  const [reviewAttachment, setReviewAttachment] = useState<UploadedFileMeta | null>(null);
+  const [previewAttachment, setPreviewAttachment] = useState<UploadedFileMeta | null>(null);
+  const [savingGrade, setSavingGrade] = useState(false);
 
   const courseLookup = useMemo(() => {
     const map: Record<string, Course> = {};
@@ -191,6 +199,7 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
       return;
     }
 
+    setIsAddingStudent(true);
     try {
       await onAddStudent({
         name: addName.trim(),
@@ -203,6 +212,8 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
     } catch (error) {
       setAddEmailError(error instanceof Error ? error.message : 'Unable to create this account.');
       return;
+    } finally {
+      setIsAddingStudent(false);
     }
 
     setAddName('');
@@ -220,12 +231,37 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
     setGradingSubmission(currentSub || null);
     setGradeInput(currentSub?.grade || '');
     setFeedbackInput(currentSub?.teacherFeedback || '');
+    setReviewAttachment(currentSub?.reviewAttachment || null);
   };
 
-  const handleSaveGrade = (e: React.FormEvent) => {
+  const handleReviewPdfSelect = async (file?: File) => {
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024 || (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf'))) {
+      onNotify('Choose a PDF file smaller than 20 MB.');
+      return;
+    }
+    try {
+      const header = new TextDecoder().decode(await file.slice(0, 1024).arrayBuffer());
+      if (!header.includes('%PDF-')) {
+        onNotify('This file does not appear to be a valid PDF.');
+        return;
+      }
+      setReviewAttachment({ fileName: file.name, fileSize: file.size, fileType: 'application/pdf', fileData: await readFileAsDataUrl(file) });
+    } catch {
+      onNotify('Could not read this PDF. Please choose a valid file and try again.');
+    }
+  };
+
+  const handleSaveGrade = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!gradingAssignment || !drawerStudent) return;
-    onGradeAssignment(gradingAssignment.id, drawerStudent.id, gradeInput, feedbackInput);
+    setSavingGrade(true);
+    const saved = await onGradeAssignment(gradingAssignment.id, drawerStudent.id, gradeInput, feedbackInput, reviewAttachment || undefined);
+    setSavingGrade(false);
+    if (!saved) {
+      onNotify('Grade could not be saved. Please try again.');
+      return;
+    }
     onNotify(`Recorded grade for ${drawerStudent.name}`);
     setGradingAssignment(null);
   };
@@ -247,19 +283,19 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
   return (
     <div className="space-y-8">
       {/* Top Banner & Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-[#E7E5E4] pb-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 dark:border-slate-800 pb-5">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <h2 className="font-display text-xl font-bold text-[#18181B]">
+            <h2 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">
               Registration Requests &amp; Student Directory
             </h2>
             {pendingStudents.length > 0 && (
-              <span className="rounded-full bg-[#EA580C] px-2.5 py-0.5 text-xs font-bold text-white tabular-nums">
+              <span className="rounded-full bg-indigo-600 dark:bg-indigo-500 px-2.5 py-0.5 text-xs font-bold text-white tabular-nums">
                 {pendingStudents.length} Pending
               </span>
             )}
           </div>
-          <p className="text-xs text-[#52525B]">
+          <p className="text-xs text-slate-600 dark:text-slate-400">
             Review new student signups, grant batch permissions, and track individual progress.
           </p>
         </div>
@@ -267,9 +303,9 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
         <button
           type="button"
           onClick={() => setShowAddModal(true)}
-          className="inline-flex items-center gap-2 rounded-full bg-[#18181B] px-4 py-2 text-xs font-semibold text-white hover:bg-[#27272A] whitespace-nowrap shrink-0"
+          className="inline-flex items-center gap-2 rounded-full bg-slate-900 dark:bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 dark:hover:bg-indigo-500 whitespace-nowrap shrink-0"
         >
-          <UserPlus className="h-3.5 w-3.5 text-[#F97316]" />
+          <UserPlus className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
           <span>Manually Add Student</span>
         </button>
       </div>
@@ -278,23 +314,23 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
       <section aria-label="Pending Approvals" className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-[#EA580C]" />
-            <h3 className="font-display text-sm font-bold text-[#18181B]">
+            <Clock className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+            <h3 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100">
               Pending Approval Queue ({pendingStudents.length})
             </h3>
           </div>
-          <span className="text-xs text-[#71717A]">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
             Students cannot access portal materials until approved
           </span>
         </div>
 
         {pendingStudents.length === 0 ? (
-          <div className="rounded-2xl border border-[#E7E5E4] bg-[#FFFFFF] p-6 text-center shadow-sm">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 text-center shadow-sm">
             <UserCheck className="mx-auto h-7 w-7 text-[#0F766E]" />
-            <p className="mt-2 text-sm font-semibold text-[#18181B]">
+            <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
               All registration requests reviewed
             </p>
-            <p className="mt-1 text-xs text-[#71717A]">
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               When students sign up on the portal login page, their requests will appear here for one-click approval and course batch enrollment.
             </p>
           </div>
@@ -303,28 +339,28 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
             {pendingStudents.map((student) => (
               <article
                 key={student.id}
-                className="flex flex-col gap-4 rounded-2xl border border-[#FED7AA] bg-[#FFFBF7] p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-4 rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/30 p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="space-y-1.5 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-display text-base font-bold text-[#18181B]">
+                    <span className="font-display text-base font-bold text-slate-900 dark:text-slate-100">
                       {student.name}
                     </span>
-                    <span className="rounded-full bg-[#FED7AA] px-2 py-0.5 text-[11px] font-semibold text-[#C2410C]">
+                    <span className="rounded-full bg-indigo-100 dark:bg-indigo-900/50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
                       Awaiting Verification
                     </span>
-                    <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-[#52525B] border border-[#E7E5E4]">
+                    <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800">
                       {student.gradeLevel}
                     </span>
                   </div>
 
-                  <p className="text-xs text-[#71717A] tabular-nums">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
                     {student.email} · Submitted {formatReadableDate(student.createdAt.slice(0, 10), true)}
                   </p>
 
                   {student.requestNote && (
-                    <div className="rounded-xl border border-[#FED7AA]/60 bg-white p-2.5 text-xs text-[#78350F]">
-                      <strong className="font-semibold text-[#9A3412]">Student Note:</strong> &ldquo;{student.requestNote}&rdquo;
+                    <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-white p-2.5 text-xs text-slate-700 dark:text-slate-300">
+                      <strong className="font-semibold text-indigo-700 dark:text-indigo-300">Student Note:</strong> &ldquo;{student.requestNote}&rdquo;
                     </div>
                   )}
                 </div>
@@ -333,9 +369,9 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                   <button
                     type="button"
                     onClick={() => openApprovalModal(student)}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-[#18181B] px-4 py-2 text-xs font-semibold text-white hover:bg-[#27272A] shadow-sm whitespace-nowrap shrink-0"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 dark:bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 dark:hover:bg-indigo-500 shadow-sm whitespace-nowrap shrink-0"
                   >
-                    <Check className="h-3.5 w-3.5 text-[#F97316]" />
+                    <Check className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
                     <span>Approve &amp; Enroll</span>
                   </button>
 
@@ -361,30 +397,30 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
       <section aria-label="Student Directory" className="space-y-4 pt-2">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-[#4338CA]" />
-            <h3 className="font-display text-sm font-bold text-[#18181B]">
+            <Users className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+            <h3 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100">
               Registered Student Directory ({activeStudents.length})
             </h3>
           </div>
 
           <div className="relative w-full sm:w-64">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#71717A]" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by name or email..."
-              className="w-full rounded-full border border-[#E7E5E4] bg-white py-1.5 pl-8 pr-3 text-xs text-[#18181B] focus:border-[#4338CA] focus:outline-none"
+              className="w-full rounded-full border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-1.5 pl-8 pr-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#4338CA] focus:outline-none"
             />
           </div>
         </div>
 
         {activeStudents.length === 0 ? (
-          <div className="rounded-2xl border border-[#E7E5E4] bg-[#FFFFFF] p-8 text-center text-xs text-[#71717A]">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-500 dark:text-slate-400">
             No active student accounts. Approve a pending request above or click &ldquo;Manually Add Student&rdquo;.
           </div>
         ) : filteredActiveStudents.length === 0 ? (
-          <div className="rounded-2xl border border-[#E7E5E4] bg-[#FFFFFF] p-8 text-center text-xs text-[#71717A]">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 text-center text-xs text-slate-500 dark:text-slate-400">
             No students match your search &ldquo;{searchQuery}&rdquo;.
           </div>
         ) : (
@@ -401,7 +437,7 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
               return (
                 <article
                   key={student.id}
-                  className="rounded-2xl border border-[#E7E5E4] bg-[#FFFFFF] p-5 shadow-sm transition-colors hover:border-[#D4D4D8]"
+                  className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm transition-colors hover:border-[#D4D4D8]"
                 >
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <button
@@ -413,14 +449,14 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-display text-sm font-bold ${
                           isRejected
                             ? 'bg-red-50 text-red-600'
-                            : 'bg-[#EEF2FF] text-[#4338CA]'
+                            : 'bg-[#EEF2FF] text-indigo-600 dark:text-indigo-400'
                         }`}
                       >
                         {student.name.slice(0, 2).toUpperCase()}
                       </span>
                       <div className="min-w-0 space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="font-display text-base font-bold text-[#18181B] hover:text-[#4338CA] transition-colors">
+                          <h4 className="font-display text-base font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:text-indigo-400 transition-colors">
                             {student.name}
                           </h4>
                           <span
@@ -432,17 +468,17 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                           >
                             {isRejected ? 'Suspended / Declined' : 'Approved'}
                           </span>
-                          <span className="text-xs text-[#71717A]">
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
                             {student.gradeLevel}
                           </span>
                         </div>
 
-                        <p className="text-xs text-[#71717A]">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
                           {student.email} · Registered {formatReadableDate(student.createdAt.slice(0, 10), false)}
                         </p>
 
                         {student.notes && (
-                          <p className="text-xs text-[#52525B] line-clamp-1 italic">
+                          <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-1 italic">
                             &ldquo;{student.notes}&rdquo;
                           </p>
                         )}
@@ -453,7 +489,7 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                       <button
                         type="button"
                         onClick={() => setDrawerStudentId(student.id)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-1.5 text-xs font-semibold text-[#18181B] hover:bg-[#E7E5E4]/60 whitespace-nowrap shrink-0"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100 hover:bg-[#E7E5E4]/60 whitespace-nowrap shrink-0"
                       >
                         <span>Profile &amp; Logs ({logCount})</span>
                       </button>
@@ -477,7 +513,7 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                             onNotify(`Suspended portal access for ${student.name}`);
                           }}
                           title="Suspend student access"
-                          className="rounded-lg border border-[#E7E5E4] p-1.5 text-[#71717A] hover:bg-amber-50 hover:text-amber-700"
+                          className="rounded-lg border border-slate-200 dark:border-slate-800 p-1.5 text-slate-500 dark:text-slate-400 hover:bg-indigo-50 hover:text-indigo-700 dark:hover:bg-indigo-950/60 dark:hover:text-indigo-300"
                         >
                           <ShieldAlert className="h-3.5 w-3.5" />
                         </button>
@@ -490,7 +526,7 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                           onNotify(`Deleted student "${student.name}"`);
                         }}
                         aria-label={`Delete ${student.name}`}
-                        className="rounded-lg border border-[#E7E5E4] p-1.5 text-[#71717A] hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+                        className="rounded-lg border border-slate-200 dark:border-slate-800 p-1.5 text-slate-500 dark:text-slate-400 hover:border-red-300 hover:bg-red-50 hover:text-red-700"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -499,14 +535,14 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
 
                   {/* Enrolled Courses Chips */}
                   <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-[#F4F4F5] pt-3 text-xs">
-                    <span className="font-medium text-[#71717A]">Enrolled:</span>
+                    <span className="font-medium text-slate-500 dark:text-slate-400">Enrolled:</span>
                     {enrolledCourses.length === 0 ? (
                       <span className="text-[#A1A1AA] italic">No courses assigned yet</span>
                     ) : (
                       enrolledCourses.map((c) => (
                         <span
                           key={c.id}
-                          className="rounded-md border border-[#E7E5E4] bg-[#F8F7F4] px-2 py-0.5 text-[11px] font-semibold text-[#18181B]"
+                          className="rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-900 dark:text-slate-100"
                         >
                           {c.code} · {c.batchName}
                         </span>
@@ -526,62 +562,62 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
           role="dialog"
           aria-modal="true"
           aria-labelledby="approve-modal-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#18181B]/50 p-4 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-[2px]"
         >
-          <div className="w-full max-w-lg rounded-3xl border border-[#E7E5E4] bg-[#FFFFFF] p-6 shadow-xl space-y-5">
-            <div className="flex items-start justify-between border-b border-[#E7E5E4] pb-4">
+          <div className="w-full max-w-lg rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xl space-y-5">
+            <div className="flex items-start justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
               <div className="space-y-1">
-                <span className="text-xs font-semibold text-[#EA580C]">Account Approval</span>
-                <h3 id="approve-modal-title" className="font-display text-lg font-bold text-[#18181B]">
+                <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">Account Approval</span>
+                <h3 id="approve-modal-title" className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">
                   Approve {approvingStudent.name}
                 </h3>
-                <p className="text-xs text-[#71717A]">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   {approvingStudent.email} · {approvingStudent.gradeLevel}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setApprovingStudent(null)}
-                className="rounded-lg p-1 text-[#71717A] hover:bg-[#F4F4F5] hover:text-[#18181B]"
+                className="rounded-lg p-1 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:text-slate-100"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             {approvingStudent.requestNote && (
-              <div className="rounded-xl border border-[#FED7AA] bg-[#FFFBF7] p-3 text-xs text-[#78350F]">
+              <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/30 p-3 text-xs text-slate-700 dark:text-slate-300">
                 <strong>Student requested note:</strong> &ldquo;{approvingStudent.requestNote}&rdquo;
               </div>
             )}
 
             <form onSubmit={handleConfirmApproval} className="space-y-4">
               <div className="space-y-2">
-                <label className="block text-xs font-semibold text-[#18181B]">
+                <label className="block text-xs font-semibold text-slate-900 dark:text-slate-100">
                   Select Course Batches to Enroll Student Upon Approval
                 </label>
 
                 {state.courses.length === 0 ? (
-                  <p className="rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] p-3 text-xs text-[#71717A]">
+                  <p className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 p-3 text-xs text-slate-500 dark:text-slate-400">
                     No courses created yet. You can approve the student now and create courses in the Courses tab later.
                   </p>
                 ) : (
-                  <div className="space-y-2 rounded-2xl border border-[#E7E5E4] bg-[#F8F7F4] p-3.5">
+                  <div className="space-y-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 p-3.5">
                     {state.courses.map((course) => {
                       const checked = selectedCourseIdsForApproval.includes(course.id);
                       return (
                         <label
                           key={course.id}
-                          className="flex cursor-pointer items-center justify-between rounded-xl bg-white p-2.5 text-xs font-medium text-[#18181B] border border-[#E7E5E4]"
+                          className="flex cursor-pointer items-center justify-between rounded-xl bg-white p-2.5 text-xs font-medium text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800"
                         >
                           <div>
                             <p className="font-semibold">{course.title} · {course.batchName}</p>
-                            <p className="text-[11px] text-[#71717A]">{course.code}</p>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">{course.code}</p>
                           </div>
                           <input
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggleApprovalCourse(course.id)}
-                            className="h-4 w-4 rounded text-[#4338CA] focus:ring-[#4338CA]"
+                            className="h-4 w-4 rounded text-indigo-600 dark:text-indigo-400 focus:ring-[#4338CA]"
                           />
                         </label>
                       );
@@ -590,19 +626,19 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                 )}
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#E7E5E4]">
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setApprovingStudent(null)}
-                  className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-xs font-semibold text-[#52525B]"
+                  className="rounded-lg border border-slate-200 dark:border-slate-800 px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-2 rounded-full bg-[#18181B] px-5 py-2 text-xs font-semibold text-white hover:bg-[#27272A]"
+                  className="inline-flex items-center gap-2 rounded-full bg-slate-900 dark:bg-indigo-600 px-5 py-2 text-xs font-semibold text-white hover:bg-slate-800 dark:hover:bg-indigo-500"
                 >
-                  <CheckCircle2 className="h-4 w-4 text-[#F97316]" />
+                  <CheckCircle2 className="h-4 w-4 text-teal-600 dark:text-teal-400" />
                   <span>Activate &amp; Enroll Student</span>
                 </button>
               </div>
@@ -617,22 +653,22 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
           role="dialog"
           aria-modal="true"
           aria-labelledby="manual-add-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#18181B]/50 p-4 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-[2px]"
         >
-          <div className="w-full max-w-lg rounded-3xl border border-[#E7E5E4] bg-[#FFFFFF] p-6 shadow-xl space-y-4">
-            <div className="flex items-start justify-between border-b border-[#E7E5E4] pb-3.5">
+          <div className="w-full max-w-lg rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xl space-y-4">
+            <div className="flex items-start justify-between border-b border-slate-200 dark:border-slate-800 pb-3.5">
               <div className="space-y-0.5">
-                <h3 id="manual-add-title" className="font-display text-base font-bold text-[#18181B]">
+                <h3 id="manual-add-title" className="font-display text-base font-bold text-slate-900 dark:text-slate-100">
                   Manually Add Approved Student
                 </h3>
-                <p className="text-xs text-[#71717A]">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Creates an account that is already active with immediate portal access.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowAddModal(false)}
-                className="rounded-lg p-1 text-[#71717A] hover:bg-[#F4F4F5]"
+                className="rounded-lg p-1 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -640,20 +676,20 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
 
             <form onSubmit={handleManualAddStudent} className="space-y-3.5">
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-[#18181B]">Full Name</label>
+                <label className="block text-xs font-semibold text-slate-900 dark:text-slate-100">Full Name</label>
                 <input
                   type="text"
                   required
                   value={addName}
                   onChange={(e) => setAddName(e.target.value)}
                   placeholder="e.g. Abdullah Khan"
-                  className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-2 text-sm text-[#18181B]"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-[#18181B]">Email Address</label>
+                  <label className="block text-xs font-semibold text-slate-900 dark:text-slate-100">Email Address</label>
                   <input
                     type="email"
                     required
@@ -663,8 +699,8 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                       if (addEmailError) setAddEmailError(null);
                     }}
                     placeholder="student@gmail.com"
-                    className={`w-full rounded-xl border bg-[#F8F7F4] px-3 py-2 text-sm text-[#18181B] ${
-                      addEmailError ? 'border-red-400 bg-red-50/30' : 'border-[#E7E5E4]'
+                    className={`w-full rounded-xl border bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 ${
+                      addEmailError ? 'border-red-400 bg-red-50/30' : 'border-slate-200 dark:border-slate-800'
                     }`}
                   />
                   {addEmailError && (
@@ -672,7 +708,7 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                   )}
                 </div>
                 <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-[#18181B]">Temporary Password</label>
+                  <label className="block text-xs font-semibold text-slate-900 dark:text-slate-100">Temporary Password</label>
                   <input
                     type="password"
                     required
@@ -681,47 +717,50 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                     value={addPassword}
                     onChange={(e) => setAddPassword(e.target.value)}
                     placeholder="At least 8 characters"
-                    className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-2 text-sm text-[#18181B]"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-[#18181B]">Grade / Year</label>
+                <label className="block text-xs font-semibold text-slate-900 dark:text-slate-100">Grade / Year</label>
                 <input
                   type="text"
                   required
                   value={addGrade}
                   onChange={(e) => setAddGrade(e.target.value)}
                   placeholder="Year 11 / IGCSE"
-                  className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-2 text-sm text-[#18181B]"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-[#18181B]">Tutor Notes</label>
+                <label className="block text-xs font-semibold text-slate-900 dark:text-slate-100">Tutor Notes</label>
                 <input
                   type="text"
                   value={addNotes}
                   onChange={(e) => setAddNotes(e.target.value)}
                   placeholder="Target grade, strengths, goals..."
-                  className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-2 text-sm text-[#18181B]"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#E7E5E4]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-xs font-semibold text-[#52525B]"
+                  className="rounded-lg border border-slate-200 dark:border-slate-800 px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="rounded-full bg-[#18181B] px-5 py-2 text-xs font-semibold text-white hover:bg-[#27272A]"
+                  disabled={isAddingStudent}
+                  aria-busy={isAddingStudent}
+                  className="inline-flex items-center gap-2 rounded-full bg-slate-900 dark:bg-indigo-600 px-5 py-2 text-xs font-semibold text-white hover:bg-slate-800 dark:hover:bg-indigo-500 disabled:cursor-wait disabled:opacity-60"
                 >
-                  Add Student
+                  {isAddingStudent && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                  {isAddingStudent ? 'Adding…' : 'Add Student'}
                 </button>
               </div>
             </form>
@@ -735,24 +774,24 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
           role="dialog"
           aria-modal="true"
           aria-labelledby="student-drawer-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#18181B]/50 p-3 sm:p-6 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 sm:p-6 backdrop-blur-[2px]"
         >
-          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-3xl border border-[#E7E5E4] bg-[#FFFFFF] shadow-2xl overflow-hidden">
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden">
             {/* Drawer Header */}
-            <div className="flex items-start justify-between border-b border-[#E7E5E4] bg-[#FAF9F7] p-5 sm:p-6">
+            <div className="flex items-start justify-between border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 p-5 sm:p-6">
               <div className="flex items-start gap-3.5 min-w-0">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#4338CA] font-display text-base font-bold text-white">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-600 dark:bg-indigo-500 font-display text-base font-bold text-white">
                   {drawerStudent.name.slice(0, 2).toUpperCase()}
                 </span>
                 <div className="min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3
                       id="student-drawer-title"
-                      className="font-display text-xl font-bold text-[#18181B]"
+                      className="font-display text-xl font-bold text-slate-900 dark:text-slate-100"
                     >
                       {drawerStudent.name}
                     </h3>
-                    <span className="rounded-full border border-[#E7E5E4] bg-white px-2.5 py-0.5 text-xs font-semibold text-[#52525B]">
+                    <span className="rounded-full border border-slate-200 dark:border-slate-800 bg-white px-2.5 py-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400">
                       {drawerStudent.gradeLevel}
                     </span>
                     <span
@@ -761,13 +800,13 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                           ? 'bg-teal-50 text-teal-700'
                           : drawerStudent.status === 'rejected'
                           ? 'bg-red-50 text-red-700'
-                          : 'bg-amber-50 text-amber-700'
+                          : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300'
                       }`}
                     >
                       {drawerStudent.status.toUpperCase()}
                     </span>
                   </div>
-                  <p className="text-xs text-[#71717A]">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     {drawerStudent.email} · Registered {formatReadableDate(drawerStudent.createdAt.slice(0, 10), false)}
                   </p>
                 </div>
@@ -777,7 +816,7 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                 type="button"
                 onClick={() => setDrawerStudentId(null)}
                 aria-label="Close student profile drawer"
-                className="rounded-lg p-1.5 text-[#71717A] hover:bg-[#F4F4F5] hover:text-[#18181B]"
+                className="rounded-lg p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:text-slate-100"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -788,17 +827,17 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
               {/* 1. Enrolled Courses */}
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-display text-sm font-bold text-[#18181B] flex items-center gap-2">
-                    <BookOpen className="h-4 w-4 text-[#4338CA]" />
+                  <h4 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <BookOpen className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                     <span>Course Batch Enrollments</span>
                   </h4>
-                  <span className="text-xs text-[#71717A]">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
                     {drawerStudent.enrolledCourseIds.length} active
                   </span>
                 </div>
 
                 {state.courses.length === 0 ? (
-                  <p className="text-xs text-[#71717A]">No courses created yet.</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">No courses created yet.</p>
                 ) : (
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {state.courses.map((course) => {
@@ -810,8 +849,8 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                           onClick={() => onToggleEnrollment(drawerStudent.id, course.id)}
                           className={`flex items-center justify-between rounded-xl border p-3 text-left transition-colors ${
                             isEnrolled
-                              ? 'border-[#4338CA]/40 bg-[#EEF2FF] text-[#18181B]'
-                              : 'border-[#E7E5E4] bg-[#F8F7F4] text-[#71717A] hover:border-[#D4D4D8]'
+                              ? 'border-[#4338CA]/40 bg-[#EEF2FF] text-slate-900 dark:text-slate-100'
+                              : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:border-[#D4D4D8]'
                           }`}
                         >
                           <div className="min-w-0 pr-2">
@@ -822,7 +861,7 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                           </div>
                           <span
                             className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-xs font-bold ${
-                              isEnrolled ? 'bg-[#4338CA] text-white' : 'border border-[#D4D4D8] bg-white'
+                              isEnrolled ? 'bg-indigo-600 dark:bg-indigo-500 text-white' : 'border border-[#D4D4D8] bg-white'
                             }`}
                           >
                             {isEnrolled && '✓'}
@@ -837,17 +876,17 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
               {/* 2. Assignments & Progress */}
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-display text-sm font-bold text-[#18181B] flex items-center gap-2">
+                  <h4 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                     <Award className="h-4 w-4 text-[#0F766E]" />
                     <span>Assignments &amp; Submissions</span>
                   </h4>
-                  <span className="text-xs text-[#71717A]">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
                     {studentAssignments.length} assigned
                   </span>
                 </div>
 
                 {studentAssignments.length === 0 ? (
-                  <p className="text-xs text-[#71717A]">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     No assignments currently assigned for this student&apos;s courses.
                   </p>
                 ) : (
@@ -860,22 +899,22 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                       return (
                         <div
                           key={asg.id}
-                          className="rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] p-3.5 space-y-2"
+                          className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 p-3.5 space-y-2"
                         >
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                             <div className="space-y-1 min-w-0">
                               <div className="flex items-center gap-2 text-[11px]">
-                                <span className="font-semibold text-[#4338CA]">
+                                <span className="font-semibold text-indigo-600 dark:text-indigo-400">
                                   {course?.code}
                                 </span>
                                 <span aria-hidden="true" className="text-[#D4D4D8]">
                                   ·
                                 </span>
-                                <span className="text-[#71717A] tabular-nums">
+                                <span className="text-slate-500 dark:text-slate-400 tabular-nums">
                                   Due {formatReadableDate(asg.dueDate, false)}
                                 </span>
                               </div>
-                              <p className="text-xs font-bold text-[#18181B]">{asg.title}</p>
+                              <p className="text-xs font-bold text-slate-900 dark:text-slate-100">{asg.title}</p>
                             </div>
 
                             <div className="flex items-center gap-2">
@@ -884,8 +923,8 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                                   status === 'Graded'
                                     ? 'border-[#99F6E4] bg-[#F0FDFA] text-[#0F766E]'
                                     : status === 'Submitted'
-                                    ? 'border-[#C7D2FE] bg-[#EEF2FF] text-[#4338CA]'
-                                    : 'border-[#FED7AA] bg-[#FFF7ED] text-[#C2410C]'
+                                    ? 'border-[#C7D2FE] bg-[#EEF2FF] text-indigo-600 dark:text-indigo-400'
+                                    : 'border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300'
                                 }`}
                               >
                                 {status}
@@ -895,7 +934,7 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                               <button
                                 type="button"
                                 onClick={() => openGradeModal(asg, sub)}
-                                className="rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] px-2.5 py-1 text-[11px] font-semibold text-[#18181B] hover:bg-[#F4F4F5]"
+                                className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800"
                               >
                                 {status === 'Graded' ? 'Edit Grade' : 'Grade / Review'}
                               </button>
@@ -907,7 +946,7 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                               <button
                                 type="button"
                                 onClick={() => downloadDataUrl(sub.attachment!.fileData, sub.attachment!.fileName)}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-[#C7D2FE] bg-[#EEF2FF] px-2.5 py-1 text-xs font-semibold text-[#4338CA] hover:bg-[#E0E7FF] transition-colors"
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-[#C7D2FE] bg-[#EEF2FF] px-2.5 py-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-[#E0E7FF] transition-colors"
                               >
                                 <FileCheck className="h-3.5 w-3.5" />
                                 <span>Download Submitted PDF ({formatFileSize(sub.attachment.fileSize)})</span>
@@ -922,13 +961,13 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                                 href={sub.submissionUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 font-semibold text-[#4338CA] hover:underline"
+                                className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
                               >
                                 <span>Submitted Link</span>
                                 <ExternalLink className="h-3 w-3" />
                               </a>
                               {sub.submissionNote && (
-                                <span className="text-[#71717A] truncate">
+                                <span className="text-slate-500 dark:text-slate-400 truncate">
                                   &ldquo;{sub.submissionNote}&rdquo;
                                 </span>
                               )}
@@ -950,30 +989,30 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
               {/* 3. Chronological Activity Log */}
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-display text-sm font-bold text-[#18181B] flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-[#F97316]" />
+                  <h4 className="font-display text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-teal-600 dark:text-teal-400" />
                     <span>Chronological Activity Log</span>
                   </h4>
-                  <span className="text-xs text-[#71717A] tabular-nums">
+                  <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
                     {studentLogs.length} events recorded
                   </span>
                 </div>
 
                 {studentLogs.length === 0 ? (
-                  <p className="text-xs text-[#71717A]">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     No activity recorded for this student yet.
                   </p>
                 ) : (
-                  <div className="rounded-xl border border-[#E7E5E4] bg-[#FFFFFF] divide-y divide-[#F4F4F5] max-h-60 overflow-y-auto">
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 divide-y divide-[#F4F4F5] max-h-60 overflow-y-auto">
                     {studentLogs.map((log) => (
                       <div
                         key={log.id}
                         className="flex items-start justify-between gap-3 p-3 text-xs"
                       >
                         <div className="space-y-0.5 min-w-0">
-                          <p className="font-semibold text-[#18181B]">{log.action}</p>
+                          <p className="font-semibold text-slate-900 dark:text-slate-100">{log.action}</p>
                           {log.details && (
-                            <p className="text-[#71717A] text-[11px] truncate">{log.details}</p>
+                            <p className="text-slate-500 dark:text-slate-400 text-[11px] truncate">{log.details}</p>
                           )}
                         </div>
                         <span className="shrink-0 text-[11px] text-[#A1A1AA] tabular-nums">
@@ -987,11 +1026,11 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
             </div>
 
             {/* Drawer Footer */}
-            <div className="border-t border-[#E7E5E4] bg-[#FAF9F7] px-5 py-3.5 flex justify-end">
+            <div className="border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-5 py-3.5 flex justify-end">
               <button
                 type="button"
                 onClick={() => setDrawerStudentId(null)}
-                className="rounded-full bg-[#18181B] px-5 py-2 text-xs font-semibold text-white hover:bg-[#27272A]"
+                className="rounded-full bg-slate-900 dark:bg-indigo-600 px-5 py-2 text-xs font-semibold text-white hover:bg-slate-800 dark:hover:bg-indigo-500"
               >
                 Close Profile
               </button>
@@ -1000,19 +1039,22 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
         </div>
       )}
 
+      {previewAttachment && (
+        <PdfPreviewDialog src={previewAttachment.fileData} fileName={previewAttachment.fileName} onClose={() => setPreviewAttachment(null)} />
+      )}
       {/* Grade Modal */}
       {gradingAssignment && drawerStudent && (
         <div
           role="dialog"
           aria-modal="true"
           aria-labelledby="grade-student-asg-title"
-          className="fixed inset-0 z-60 flex items-center justify-center bg-[#18181B]/45 p-4 backdrop-blur-[2px]"
+          className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900 dark:bg-indigo-600/45 p-4 backdrop-blur-[2px]"
         >
-          <div className="w-full max-w-md rounded-2xl border border-[#E7E5E4] bg-[#FFFFFF] p-6 shadow-xl">
-            <div className="flex items-start justify-between border-b border-[#E7E5E4] pb-3.5">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xl">
+            <div className="flex items-start justify-between border-b border-slate-200 dark:border-slate-800 pb-3.5">
               <div>
                 <p className="text-xs font-semibold text-[#0F766E]">Grade Submission</p>
-                <h3 id="grade-student-asg-title" className="font-display text-base font-bold text-[#18181B]">
+                <h3 id="grade-student-asg-title" className="font-display text-base font-bold text-slate-900 dark:text-slate-100">
                   {drawerStudent.name} · {gradingAssignment.title}
                 </h3>
               </div>
@@ -1020,7 +1062,7 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                 type="button"
                 onClick={() => setGradingAssignment(null)}
                 aria-label="Close grading modal"
-                className="rounded-lg p-1 text-[#71717A] hover:bg-[#F4F4F5] hover:text-[#18181B]"
+                className="rounded-lg p-1 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:text-slate-100"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -1029,31 +1071,43 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
             {gradingSubmission?.attachment && (
               <div className="rounded-xl border border-[#C7D2FE] bg-[#EEF2FF] p-3 text-xs space-y-2 mt-4">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-[#4338CA] flex items-center gap-1.5">
+                  <span className="font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
                     <FileCheck className="h-4 w-4" />
                     <span>Submitted Student PDF</span>
                   </span>
-                  <span className="text-[10px] text-[#52525B]">
+                  <span className="text-[10px] text-slate-600 dark:text-slate-400">
                     {formatFileSize(gradingSubmission.attachment.fileSize)}
                   </span>
                 </div>
-                <p className="font-semibold text-[#18181B] truncate">
+                <p className="font-semibold text-slate-900 dark:text-slate-100 truncate">
                   {gradingSubmission.attachment.fileName}
                 </p>
                 <button
                   type="button"
-                  onClick={() => downloadDataUrl(gradingSubmission!.attachment!.fileData, gradingSubmission!.attachment!.fileName)}
-                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#4338CA] py-2 text-xs font-semibold text-white hover:bg-[#3730A3]"
+                  onClick={() => setPreviewAttachment(gradingSubmission!.attachment!)}
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-indigo-600 dark:bg-indigo-500 py-2 text-xs font-semibold text-white hover:bg-[#3730A3]"
                 >
-                  <Download className="h-3.5 w-3.5" />
-                  <span>Download / View Student PDF</span>
+                  <FileCheck className="h-3.5 w-3.5" />
+                  <span>Preview Student PDF</span>
                 </button>
               </div>
             )}
 
+            {gradingSubmission?.reviewAttachment && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs dark:border-teal-900/60 dark:bg-teal-950/40">
+                <span className="min-w-0 truncate font-semibold text-teal-900 dark:text-teal-200">Existing review PDF: {gradingSubmission.reviewAttachment.fileName}</span>
+                <button type="button" onClick={() => setPreviewAttachment(gradingSubmission.reviewAttachment!)} className="font-semibold text-teal-800 underline dark:text-teal-300">Preview</button>
+              </div>
+            )}
             <form onSubmit={handleSaveGrade} className="mt-4 space-y-4">
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-[#18181B]">
+                <label htmlFor="directory-review-pdf" className="block text-xs font-semibold text-slate-900 dark:text-slate-100">PDF attached to graded review</label>
+                <input id="directory-review-pdf" type="file" accept="application/pdf,.pdf" onChange={(event) => void handleReviewPdfSelect(event.target.files?.[0])} className="block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-600 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200" />
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">Optional PDF, up to 20 MB.</p>
+                {reviewAttachment && <div className="flex items-center gap-3 text-xs"><span className="min-w-0 truncate text-slate-700 dark:text-slate-300">{reviewAttachment.fileName}</span><button type="button" onClick={() => setPreviewAttachment(reviewAttachment)} className="font-semibold text-indigo-600 hover:underline dark:text-indigo-400">Preview</button><button type="button" onClick={() => setReviewAttachment(null)} className="font-semibold text-rose-600 hover:underline dark:text-rose-400">Remove</button></div>}
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-900 dark:text-slate-100">
                   Score / Grade
                 </label>
                 <input
@@ -1062,12 +1116,12 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                   value={gradeInput}
                   onChange={(e) => setGradeInput(e.target.value)}
                   placeholder="e.g. 38 / 40 (95%) or Grade 9"
-                  className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-2 text-sm font-mono text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm font-mono text-slate-900 dark:text-slate-100 focus:border-[#4338CA] focus:bg-white focus:outline-none"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-[#18181B]">
+                <label className="block text-xs font-semibold text-slate-900 dark:text-slate-100">
                   Feedback for {drawerStudent.name}
                 </label>
                 <textarea
@@ -1075,23 +1129,26 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                   value={feedbackInput}
                   onChange={(e) => setFeedbackInput(e.target.value)}
                   placeholder="Exam technique tips, strong points, improvement areas..."
-                  className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-2 text-sm text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:border-[#4338CA] focus:bg-white focus:outline-none"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 border-t border-[#E7E5E4] pt-4">
+              <div className="flex justify-end gap-2 border-t border-slate-200 dark:border-slate-800 pt-4">
                 <button
                   type="button"
                   onClick={() => setGradingAssignment(null)}
-                  className="rounded-lg border border-[#E7E5E4] px-4 py-2 text-xs font-semibold text-[#52525B]"
+                  className="rounded-lg border border-slate-200 dark:border-slate-800 px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="rounded-full bg-[#0F766E] px-5 py-2 text-xs font-semibold text-white hover:bg-[#115E59]"
+                  disabled={savingGrade}
+                  aria-busy={savingGrade}
+                  className="inline-flex items-center gap-2 rounded-full bg-[#0F766E] px-5 py-2 text-xs font-semibold text-white hover:bg-[#115E59] disabled:cursor-wait disabled:opacity-60"
                 >
-                  Save Grade
+                  {savingGrade && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                  {savingGrade ? 'Saving…' : 'Save Grade'}
                 </button>
               </div>
             </form>

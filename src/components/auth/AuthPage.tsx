@@ -172,7 +172,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
           >
             {theme === 'dark' ? (
-              <Sun className="h-4 w-4 text-amber-300" aria-hidden="true" />
+              <Sun className="h-4 w-4 text-indigo-300" aria-hidden="true" />
             ) : (
               <Moon className="h-4 w-4 text-slate-600" aria-hidden="true" />
             )}
@@ -237,7 +237,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
               </div>
             )}
             {successMessage && (
-              <div role="status" className="rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/40 p-3 text-xs leading-relaxed text-emerald-800 dark:text-emerald-300">
+              <div role="status" className="rounded-xl border border-teal-200 dark:border-teal-900/60 bg-teal-50 dark:bg-teal-950/40 p-3 text-xs leading-relaxed text-teal-800 dark:text-teal-300">
                 {successMessage}
               </div>
             )}

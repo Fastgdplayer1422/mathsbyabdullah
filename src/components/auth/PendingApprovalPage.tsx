@@ -52,7 +52,7 @@ export const PendingApprovalPage: React.FC<PendingApprovalPageProps> = ({
               className={`mx-auto flex h-14 w-14 items-center justify-center rounded-2xl ${
                 isRejected
                   ? 'bg-red-50 dark:bg-red-950/50 text-red-600 dark:text-red-400'
-                  : 'bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400'
+                  : 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400'
               }`}
             >
               {isRejected ? (
@@ -67,7 +67,7 @@ export const PendingApprovalPage: React.FC<PendingApprovalPageProps> = ({
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
                   isRejected
                     ? 'border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300'
-                    : 'border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300'
+                    : 'border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300'
                 }`}
               >
                 {isRejected ? 'Registration Declined' : 'Awaiting Teacher Verification'}

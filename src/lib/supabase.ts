@@ -1,16 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.NEXT_PUBLIC_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-  || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
-  || import.meta.env.VITE_SUPABASE_ANON_KEY;
+const env = import.meta.env;
+const supabaseUrl = env.VITE_SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = env.VITE_SUPABASE_PUBLISHABLE_KEY
+  || env.VITE_SUPABASE_ANON_KEY
+  || env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+  || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Supabase is not configured for this app.');
-}
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey);
 
-export const createIsolatedAuthClient = () => createClient(supabaseUrl, supabaseKey, {
+const clientUrl = supabaseUrl || 'https://not-configured.supabase.co';
+const clientKey = supabaseKey || 'supabase-not-configured';
+
+export const createIsolatedAuthClient = () => createClient(clientUrl, clientKey, {
   auth: { autoRefreshToken: false, detectSessionInUrl: false, persistSession: false },
 });
 

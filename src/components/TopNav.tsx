@@ -147,7 +147,7 @@ export const TopNav: React.FC<TopNavProps> = ({
             className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shadow-2xs"
           >
             {theme === 'dark' ? (
-              <Sun className="h-4 w-4 text-amber-300" aria-hidden="true" />
+              <Sun className="h-4 w-4 text-indigo-300" aria-hidden="true" />
             ) : (
               <Moon className="h-4 w-4 text-slate-600" aria-hidden="true" />
             )}
@@ -188,14 +188,16 @@ export const TopNav: React.FC<TopNavProps> = ({
             type="button"
             onClick={handleSignOutClick}
             disabled={isSigningOut}
-            className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-slate-400 dark:hover:border-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0 disabled:opacity-50"
+            aria-busy={isSigningOut}
+            className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-slate-400 dark:hover:border-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0 disabled:cursor-wait disabled:opacity-50"
           >
             {isSigningOut ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" aria-hidden="true" />
             ) : (
-              <LogOut className="h-3.5 w-3.5" />
+              <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
             )}
-            <span className="hidden sm:inline">Sign Out</span>
+            <span className="hidden sm:inline">{isSigningOut ? 'Signing out…' : 'Sign Out'}</span>
+            <span className="sr-only sm:hidden">{isSigningOut ? 'Signing out' : 'Sign out'}</span>
           </button>
         </div>
       </div>

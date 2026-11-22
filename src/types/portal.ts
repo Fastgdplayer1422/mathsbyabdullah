@@ -53,6 +53,7 @@ export interface StudentSubmission {
   grade?: string;
   teacherFeedback?: string;
   attachment?: UploadedFileMeta;
+  reviewAttachment?: UploadedFileMeta;
 }
 
 export type DayOfWeek =

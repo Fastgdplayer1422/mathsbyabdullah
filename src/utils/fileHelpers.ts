@@ -85,14 +85,28 @@ export function isPdfFile(file: File): boolean {
 /**
  * Triggers a direct download of a base64 Data URL or blob URL.
  */
-export function downloadDataUrl(dataUrl: string, fileName: string) {
+export async function downloadDataUrl(dataUrl: string, fileName: string) {
   try {
+    let href = dataUrl;
+    let objectUrl: string | undefined;
+    if (/^https?:\/\//i.test(dataUrl)) {
+      try {
+        const response = await fetch(dataUrl);
+        if (!response.ok) throw new Error('File download failed');
+        objectUrl = URL.createObjectURL(await response.blob());
+        href = objectUrl;
+      } catch {
+        href = dataUrl;
+      }
+    }
+
     const link = document.createElement('a');
-    link.href = dataUrl;
+    link.href = href;
     link.download = fileName || 'download';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    if (objectUrl) window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
   } catch (err) {
     console.error('Download error:', err);
   }
