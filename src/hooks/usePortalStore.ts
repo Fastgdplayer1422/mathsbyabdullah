@@ -610,13 +610,14 @@ export function usePortalStore() {
     submissionNote: string,
     attachment?: UploadedFileMeta
   ) => {
-    const subId = id();
+    const existingSubmission = stateRef.current.submissions.find(
+      (item) => item.assignmentId.toLowerCase() === assignmentId.toLowerCase() && item.studentId.toLowerCase() === studentId.toLowerCase()
+    );
+    const subId = existingSubmission?.id || id();
     const submittedAt = new Date().toISOString();
     const normalizedUrl = normalizeExternalUrl(submissionUrl);
     const cleanNote = submissionNote.trim();
-    const previousSubmission = stateRef.current.submissions.find(
-      (item) => item.assignmentId.toLowerCase() === assignmentId.toLowerCase() && item.studentId.toLowerCase() === studentId.toLowerCase()
-    );
+    const previousSubmission = existingSubmission;
     const newSubmission = {
       id: subId,
       assignmentId,

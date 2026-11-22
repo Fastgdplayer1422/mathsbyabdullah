@@ -142,7 +142,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     setSuccessMessage(null);
     setIsSubmitting(true);
     try {
-      const result = await onTeacherLogin(teacherEmail.trim().toLowerCase(), teacherPassword.trim(), teacherRememberMe);
+      const result = await onTeacherLogin(teacherEmail.trim().toLowerCase(), teacherPassword, teacherRememberMe);
       if (result.error) setErrorMessage(result.error);
     } catch {
       setErrorMessage('Unable to sign in right now. Please try again.');
