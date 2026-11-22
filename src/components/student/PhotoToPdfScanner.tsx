@@ -307,13 +307,17 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
         uploadedAt: new Date().toISOString(),
       };
 
-      await onSubmitAssignment(
+      const result = await onSubmitAssignment(
         selectedAssignmentId,
         activeStudent.id,
         '',
         submissionNote.trim() || `Submitted via Photo-to-PDF Scanner (${pages.length} pages)`,
         attachment
       );
+      if (result && result.success === false) {
+        onNotify(result.error || 'Submission failed. Please try again.');
+        return;
+      }
 
       const targetAsg = state.assignments.find((a) => a.id === selectedAssignmentId);
       onNotify(`Successfully submitted PDF to "${targetAsg?.title || 'Assignment'}"!`);

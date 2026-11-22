@@ -122,7 +122,8 @@ export default function App() {
   }, [loadAuthenticatedRole]);
 
   const handleSignOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
     setSession(null);
     notify('Signed out of MathsByAbdullah');
   }, [notify]);
@@ -131,7 +132,7 @@ export default function App() {
     const normalizedEmail = email.trim().toLowerCase();
     const { data, error } = await supabase.auth.signInWithPassword({
       email: normalizedEmail,
-      password: password.trim(),
+      password,
     });
     if (error || !data.user) {
       if (error && import.meta.env.DEV) {
@@ -159,12 +160,15 @@ export default function App() {
       'id,role,status,full_name,email',
       (projection) => supabase.from('profiles').select(projection).eq('id', data.user.id).maybeSingle(),
     );
-    if (profileError || !profile || profile.role?.trim().toLowerCase() !== expectedRole) {
-      await supabase.auth.signOut();
-      if (profileError && import.meta.env.DEV) {
-        console.error('[auth] Profile lookup failed', { code: profileError.code,  });
+    if (profileError) {
+      if (import.meta.env.DEV) {
+        console.error('[auth] Profile lookup failed', { code: profileError.code });
       }
-      return { error: profileError?.message || 'Invalid email or password.' };
+      return { error: 'Your password was accepted, but we could not load your portal profile. Please try again.' };
+    }
+    if (!profile || profile.role?.trim().toLowerCase() !== expectedRole) {
+      await supabase.auth.signOut();
+      return { error: 'This account is not configured for the selected portal. Please choose the correct sign-in option or contact your teacher.' };
     }
     setSession(expectedRole === 'teacher' ? { role: 'teacher' } : { role: 'student', studentId: profile.id });
     setAuthLoading(false);
@@ -223,6 +227,17 @@ export default function App() {
     setScheduleCourseFilter(courseId);
     setStudentTab('schedule');
   }, []);
+
+  if (authLoading) {
+    return (
+      <main role="status" aria-live="polite" className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-600 dark:bg-[#0B0F17] dark:text-slate-300">
+        <span className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-medium shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <span aria-hidden="true" className="size-5 animate-spin rounded-full border-2 border-indigo-600/25 border-t-indigo-600 dark:border-indigo-400/25 dark:border-t-indigo-400" />
+          Restoring your secure session…
+        </span>
+      </main>
+    );
+  }
 
   // 1. Public landing page and the selected sign-in flow
   if (!session) {

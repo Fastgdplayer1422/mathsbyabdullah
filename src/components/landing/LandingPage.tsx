@@ -173,7 +173,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         {/* Subtle Geometric / Grid Background Pattern (~10% opacity) */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
+          className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
         >
           <svg
             className="absolute inset-0 h-full w-full stroke-slate-300 dark:stroke-slate-700 [mask-image:radial-gradient(100%_100%_at_top_center,white,transparent_80%)] opacity-10 dark:opacity-[0.08]"
@@ -191,7 +191,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </svg>
         </div>
 
-        <div className="mx-auto max-w-[1240px]">
+        <div className="relative z-10 mx-auto max-w-[1240px]">
           <div className="mx-auto max-w-3xl text-center space-y-6">
             {/* Main Headline */}
             <h1 className="font-display text-4xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100 sm:text-5xl lg:text-6xl sm:leading-[1.12] text-balance">
