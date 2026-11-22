@@ -31,7 +31,7 @@ interface PhotoToPdfScannerProps {
     submissionUrl: string,
     submissionNote: string,
     attachment?: UploadedFileMeta
-  ) => void;
+  ) => Promise<any> | void;
   onNotify: (msg: string) => void;
   onNavigateTab: (tab: 'dashboard' | 'assignments') => void;
 }
@@ -53,6 +53,7 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
   const [pages, setPages] = useState<ScannedPage[]>([]);
   const [pdfFileName, setPdfFileName] = useState('Maths_Workings.pdf');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState('');
   const [submissionNote, setSubmissionNote] = useState('');
   const [lastGeneratedPdf, setLastGeneratedPdf] = useState<{
@@ -293,32 +294,39 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
       return;
     }
 
-    const compiled = lastGeneratedPdf || (await generatePdfBlob());
-    if (!compiled) return;
+    setIsSubmitting(true);
+    try {
+      const compiled = lastGeneratedPdf || (await generatePdfBlob());
+      if (!compiled) return;
 
-    const attachment: UploadedFileMeta = {
-      fileName: compiled.fileName,
-      fileSize: compiled.size,
-      fileType: 'application/pdf',
-      fileData: compiled.dataUrl,
-      uploadedAt: new Date().toISOString(),
-    };
+      const attachment: UploadedFileMeta = {
+        fileName: compiled.fileName,
+        fileSize: compiled.size,
+        fileType: 'application/pdf',
+        fileData: compiled.dataUrl,
+        uploadedAt: new Date().toISOString(),
+      };
 
-    onSubmitAssignment(
-      selectedAssignmentId,
-      activeStudent.id,
-      '',
-      submissionNote.trim() || `Submitted via Photo-to-PDF Scanner (${pages.length} pages)`,
-      attachment
-    );
+      await onSubmitAssignment(
+        selectedAssignmentId,
+        activeStudent.id,
+        '',
+        submissionNote.trim() || `Submitted via Photo-to-PDF Scanner (${pages.length} pages)`,
+        attachment
+      );
 
-    const targetAsg = state.assignments.find((a) => a.id === selectedAssignmentId);
-    onNotify(`Successfully submitted PDF to "${targetAsg?.title || 'Assignment'}"!`);
+      const targetAsg = state.assignments.find((a) => a.id === selectedAssignmentId);
+      onNotify(`Successfully submitted PDF to "${targetAsg?.title || 'Assignment'}"!`);
 
-    // Reset and redirect
-    setSelectedAssignmentId('');
-    setSubmissionNote('');
-    onNavigateTab('assignments');
+      // Reset and redirect
+      setSelectedAssignmentId('');
+      setSubmissionNote('');
+      onNavigateTab('assignments');
+    } catch {
+      onNotify('Submission failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -658,15 +666,15 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
 
                 <button
                   type="submit"
-                  disabled={isGenerating || !selectedAssignmentId}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#4338CA] px-5 py-3 text-xs font-semibold text-white hover:bg-[#3730A3] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
+                  disabled={isGenerating || isSubmitting || !selectedAssignmentId}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-900 dark:bg-indigo-600 px-5 py-3 text-xs font-semibold text-white hover:bg-slate-800 dark:hover:bg-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
                 >
-                  {isGenerating ? (
+                  {isGenerating || isSubmitting ? (
                     <Loader2 className="h-4 w-4 animate-spin text-white" />
                   ) : (
-                    <CheckCircle2 className="h-4 w-4 text-[#F97316]" />
+                    <CheckCircle2 className="h-4 w-4 text-teal-400" />
                   )}
-                  <span>Generate &amp; Submit PDF Workings</span>
+                  <span>{isSubmitting ? 'Submitting PDF...' : 'Generate & Submit PDF Workings'}</span>
                 </button>
               </form>
             </div>

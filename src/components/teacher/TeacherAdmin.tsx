@@ -102,10 +102,10 @@ export const TeacherAdmin: React.FC<TeacherAdminProps> = ({
       {/* Workspace Header */}
       <div className="flex flex-col gap-4 border-b border-[#E7E5E4] pb-5 md:flex-row md:items-end md:justify-between">
         <div className="space-y-1">
-          <p className="text-xs font-semibold text-[#C2410C]">
+          <p className="text-xs font-semibold text-teal-700 dark:text-teal-400">
             Teacher Admin Control Panel · Lead Tutor Mode
           </p>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-[#18181B] sm:text-3xl">
+          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
             Manage Classes, Enrollments &amp; Activity
           </h1>
         </div>
@@ -117,14 +117,14 @@ export const TeacherAdmin: React.FC<TeacherAdminProps> = ({
               type="button"
               onClick={() => setConfirmWipe(true)}
               title="Reset portal to clean slate with empty data"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] px-3.5 py-2 text-xs font-semibold text-[#71717A] hover:border-red-300 hover:text-red-700 hover:bg-red-50/50 transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3.5 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:border-red-300 hover:text-red-700 hover:bg-red-50/50 dark:hover:bg-red-950/30 transition-colors"
             >
               <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
               <span>Reset All Data</span>
             </button>
           ) : (
-            <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5">
-              <span className="text-xs font-semibold text-red-700">Wipe all data to empty?</span>
+            <div className="flex items-center gap-2 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-3 py-1.5">
+              <span className="text-xs font-semibold text-red-700 dark:text-red-300">Wipe all data to empty?</span>
               <button
                 type="button"
                 onClick={() => {
@@ -139,7 +139,7 @@ export const TeacherAdmin: React.FC<TeacherAdminProps> = ({
               <button
                 type="button"
                 onClick={() => setConfirmWipe(false)}
-                className="rounded-md px-2 py-0.5 text-xs font-medium text-[#52525B] hover:text-[#18181B]"
+                className="rounded-md px-2 py-0.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               >
                 Cancel
               </button>
@@ -161,13 +161,13 @@ export const TeacherAdmin: React.FC<TeacherAdminProps> = ({
           onClick={() => onTabChange('live-controller')}
           className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'live-controller'
-              ? 'bg-[#18181B] text-white'
-              : 'border border-[#E7E5E4] bg-[#FFFFFF] text-[#52525B] hover:text-[#18181B]'
+              ? 'bg-slate-900 dark:bg-indigo-600 text-white'
+              : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
           <Video
             className={`h-3.5 w-3.5 ${
-              activeTab === 'live-controller' ? 'text-[#F97316]' : 'text-[#71717A]'
+              activeTab === 'live-controller' ? 'text-teal-400' : 'text-slate-400'
             }`}
             aria-hidden="true"
           />
@@ -181,13 +181,13 @@ export const TeacherAdmin: React.FC<TeacherAdminProps> = ({
           onClick={() => onTabChange('schedule-manager')}
           className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'schedule-manager'
-              ? 'bg-[#18181B] text-white'
-              : 'border border-[#E7E5E4] bg-[#FFFFFF] text-[#52525B] hover:text-[#18181B]'
+              ? 'bg-slate-900 dark:bg-indigo-600 text-white'
+              : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
           <Calendar
             className={`h-3.5 w-3.5 ${
-              activeTab === 'schedule-manager' ? 'text-[#F97316]' : 'text-[#71717A]'
+              activeTab === 'schedule-manager' ? 'text-teal-400' : 'text-slate-400'
             }`}
             aria-hidden="true"
           />
@@ -201,13 +201,13 @@ export const TeacherAdmin: React.FC<TeacherAdminProps> = ({
           onClick={() => onTabChange('content-manager')}
           className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'content-manager'
-              ? 'bg-[#18181B] text-white'
-              : 'border border-[#E7E5E4] bg-[#FFFFFF] text-[#52525B] hover:text-[#18181B]'
+              ? 'bg-slate-900 dark:bg-indigo-600 text-white'
+              : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
           <FolderKanban
             className={`h-3.5 w-3.5 ${
-              activeTab === 'content-manager' ? 'text-[#F97316]' : 'text-[#71717A]'
+              activeTab === 'content-manager' ? 'text-teal-400' : 'text-slate-400'
             }`}
             aria-hidden="true"
           />
@@ -221,13 +221,13 @@ export const TeacherAdmin: React.FC<TeacherAdminProps> = ({
           onClick={() => onTabChange('courses-manager')}
           className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'courses-manager'
-              ? 'bg-[#18181B] text-white'
-              : 'border border-[#E7E5E4] bg-[#FFFFFF] text-[#52525B] hover:text-[#18181B]'
+              ? 'bg-slate-900 dark:bg-indigo-600 text-white'
+              : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
           <BookOpen
             className={`h-3.5 w-3.5 ${
-              activeTab === 'courses-manager' ? 'text-[#4338CA]' : 'text-[#71717A]'
+              activeTab === 'courses-manager' ? 'text-indigo-400' : 'text-slate-400'
             }`}
             aria-hidden="true"
           />
@@ -241,20 +241,20 @@ export const TeacherAdmin: React.FC<TeacherAdminProps> = ({
           onClick={() => onTabChange('students-enrollments')}
           className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'students-enrollments'
-              ? 'bg-[#18181B] text-white'
-              : 'border border-[#E7E5E4] bg-[#FFFFFF] text-[#52525B] hover:text-[#18181B]'
+              ? 'bg-slate-900 dark:bg-indigo-600 text-white'
+              : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
           <Users
             className={`h-3.5 w-3.5 ${
-              activeTab === 'students-enrollments' ? 'text-[#4338CA]' : 'text-[#71717A]'
+              activeTab === 'students-enrollments' ? 'text-indigo-400' : 'text-slate-400'
             }`}
             aria-hidden="true"
           />
           <span>5. Students &amp; Approvals</span>
           {pendingCount > 0 && (
             <span
-              className="rounded-full bg-[#EA580C] px-1.5 py-0.2 text-[10px] font-bold text-white tabular-nums"
+              className="rounded-full bg-teal-600 px-1.5 py-0.2 text-[10px] font-bold text-white tabular-nums"
               title={`${pendingCount} pending registration request(s)`}
             >
               {pendingCount}

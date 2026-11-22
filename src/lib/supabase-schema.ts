@@ -6,9 +6,8 @@ type WriteBuilder = (payload: WritePayload) => PromiseLike<WriteResult>;
 const optionalColumns: Record<string, ReadonlySet<string>> = {
   profiles: new Set(['full_name', 'email', 'grade_level', 'notes', 'request_note', 'created_at']),
   courses: new Set(['description', 'schedule_cadence', 'classes_per_week', 'weekly_slots']),
-  enrollments: new Set(),
   materials: new Set(['meta_info', 'url', 'storage_path', 'file_name', 'file_size', 'file_type']),
-  submissions: new Set(['assignment_id', 'submission_url', 'submission_note', 'submitted_at', 'grade', 'teacher_feedback', 'storage_path', 'file_name', 'file_size', 'file_type']),
+  submissions: new Set(['student_id', 'user_id', 'assignment_id', 'status', 'submission_url', 'submission_note', 'submitted_at', 'grade', 'teacher_feedback', 'storage_path', 'file_name', 'file_size', 'file_type', 'attachment', 'created_at', 'updated_at']),
   class_sessions: new Set(['meeting_url']),
   assignments: new Set(['description', 'resource_url', 'resource_label', 'attachment_path', 'attachment_name', 'attachment_size', 'attachment_type']),
   activity_logs: new Set(['details', 'created_at']),

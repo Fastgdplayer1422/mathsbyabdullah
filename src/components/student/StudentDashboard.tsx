@@ -35,22 +35,22 @@ const ACCENT_STYLES: Record<
   { headerBg: string; headerText: string; badgeText: string; ringHover: string }
 > = {
   indigo: {
-    headerBg: 'bg-[#4338CA]',
+    headerBg: 'bg-indigo-600',
     headerText: 'text-white',
-    badgeText: 'text-[#4338CA]',
-    ringHover: 'hover:border-[#4338CA]/40',
+    badgeText: 'text-indigo-600 dark:text-indigo-400',
+    ringHover: 'hover:border-indigo-500/40',
   },
   orange: {
-    headerBg: 'bg-[#EA580C]',
+    headerBg: 'bg-slate-800 dark:bg-slate-700',
     headerText: 'text-white',
-    badgeText: 'text-[#C2410C]',
-    ringHover: 'hover:border-[#EA580C]/40',
+    badgeText: 'text-teal-600 dark:text-teal-400',
+    ringHover: 'hover:border-teal-500/40',
   },
   teal: {
-    headerBg: 'bg-[#0F766E]',
+    headerBg: 'bg-teal-700 dark:bg-teal-800',
     headerText: 'text-white',
-    badgeText: 'text-[#0F766E]',
-    ringHover: 'hover:border-[#0F766E]/40',
+    badgeText: 'text-teal-600 dark:text-teal-400',
+    ringHover: 'hover:border-teal-500/40',
   },
 };
 
@@ -88,7 +88,9 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
     if (!activeStudent) return 0;
     return enrolledAssignments.filter((asg) => {
       const sub = state.submissions.find(
-        (s) => s.assignmentId === asg.id && s.studentId === activeStudent.id
+        (s) =>
+          String(s.assignmentId).toLowerCase() === String(asg.id).toLowerCase() &&
+          String(s.studentId).toLowerCase() === String(activeStudent.id).toLowerCase()
       );
       return !sub || sub.status === 'Pending';
     }).length;
@@ -131,21 +133,21 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   // When no students exist in the system
   if (!activeStudent) {
     return (
-      <div className="rounded-2xl border border-[#E7E5E4] bg-[#FFFFFF] px-6 py-16 text-center shadow-sm">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F8F7F4] text-[#71717A]">
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-16 text-center shadow-sm">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-500">
           <UserX className="h-6 w-6" />
         </div>
-        <h2 className="mt-4 font-display text-xl font-bold tracking-tight text-[#18181B]">
+        <h2 className="mt-4 font-display text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
           No Student Profiles Created Yet
         </h2>
-        <p className="mx-auto mt-2 max-w-md text-sm text-[#52525B]">
+        <p className="mx-auto mt-2 max-w-md text-sm text-slate-600 dark:text-slate-400">
           This tutoring portal is starting on a clean slate. Switch to Teacher Admin to create student accounts, set up courses, and schedule live classes.
         </p>
         <div className="mt-6">
           <button
             type="button"
             onClick={onSwitchToTeacher}
-            className="inline-flex items-center gap-2 rounded-full bg-[#18181B] px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#27272A]"
+            className="inline-flex items-center gap-2 rounded-full bg-slate-900 dark:bg-indigo-600 px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-slate-800 dark:hover:bg-indigo-500"
           >
             <span>Open Teacher Admin</span>
             <ArrowUpRight className="h-4 w-4" />
@@ -169,10 +171,10 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       {/* Header Row: Personalized Greeting + 3 Metric Stat Pills */}
       <section className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-1.5">
-          <p className="text-xs font-medium tracking-wide text-[#71717A] tabular-nums">
+          <p className="text-xs font-medium tracking-wide text-slate-500 dark:text-slate-400 tabular-nums">
             {activeStudent.gradeLevel} · Today
           </p>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-[#18181B] sm:text-3xl text-balance">
+          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl text-balance">
             Hi {firstName} — here&apos;s your learning overview
           </h1>
         </div>
@@ -181,12 +183,12 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           <button
             type="button"
             onClick={() => onNavigateTab('schedule')}
-            className="group flex items-center gap-3 rounded-full border border-[#E7E5E4] bg-[#FFFFFF] px-4 py-2 text-left transition-colors duration-150 hover:border-[#4338CA]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4338CA]"
+            className="group flex items-center gap-3 rounded-full border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-2 text-left transition-colors duration-150 hover:border-indigo-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 shadow-2xs"
           >
-            <span className="font-display text-base font-bold text-[#18181B] tabular-nums">
+            <span className="font-display text-base font-bold text-slate-900 dark:text-slate-100 tabular-nums">
               {enrolledCourses.length}
             </span>
-            <span className="text-xs font-medium text-[#52525B] whitespace-nowrap">
+            <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
               Active Courses
             </span>
           </button>
@@ -194,41 +196,41 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           <button
             type="button"
             onClick={() => onNavigateTab('assignments')}
-            className="group flex items-center gap-3 rounded-full border border-[#E7E5E4] bg-[#FFFFFF] px-4 py-2 text-left transition-colors duration-150 hover:border-[#F97316]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F97316]"
+            className="group flex items-center gap-3 rounded-full border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-2 text-left transition-colors duration-150 hover:border-indigo-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 shadow-2xs"
           >
-            <span className="font-display text-base font-bold text-[#C2410C] tabular-nums">
+            <span className="font-display text-base font-bold text-indigo-600 dark:text-indigo-400 tabular-nums">
               {pendingAssignmentsCount}
             </span>
-            <span className="text-xs font-medium text-[#52525B] whitespace-nowrap">
+            <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
               Pending Assignments
             </span>
           </button>
 
           <a
             href="#study-materials"
-            className="group flex items-center gap-3 rounded-full border border-[#E7E5E4] bg-[#FFFFFF] px-4 py-2 text-left transition-colors duration-150 hover:border-[#4338CA]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4338CA]"
+            className="group flex items-center gap-3 rounded-full border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-2 text-left transition-colors duration-150 hover:border-indigo-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 shadow-2xs"
           >
-            <span className="font-display text-base font-bold text-[#4338CA] tabular-nums">
+            <span className="font-display text-base font-bold text-teal-600 dark:text-teal-400 tabular-nums">
               {enrolledMaterials.length}
             </span>
-            <span className="text-xs font-medium text-[#52525B] whitespace-nowrap">
+            <span className="text-xs font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">
               Study Materials
             </span>
           </a>
         </div>
       </section>
 
-      {/* Next Live Class Hero Banner (Automatically Calculated from Weekly Timetable or Fallback) */}
+      {/* Next Live Class Hero Banner: Sleek Slate/Indigo with Teal accents */}
       {calculatedNext ? (
         <section
           aria-label="Next live class"
-          className="relative overflow-hidden rounded-3xl border border-[#EA580C] bg-[#F97316] p-6 sm:p-8 shadow-sm"
+          className="relative overflow-hidden rounded-3xl border border-slate-800 dark:border-slate-700 bg-slate-900 dark:bg-slate-900/90 p-6 sm:p-8 shadow-md text-white"
         >
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-2xl space-y-3.5">
-              <div className="inline-flex items-center gap-2 rounded-full bg-[#18181B] px-3.5 py-1.5 text-xs font-semibold tracking-wide text-white tabular-nums">
+              <div className="inline-flex items-center gap-2 rounded-full bg-slate-800 dark:bg-slate-800/80 px-3.5 py-1.5 text-xs font-semibold tracking-wide text-slate-200 tabular-nums border border-slate-700">
                 <Radio
-                  className={`h-3.5 w-3.5 text-[#F97316] ${
+                  className={`h-3.5 w-3.5 text-teal-400 ${
                     calculatedNext.isLiveNow ? 'animate-pulse' : ''
                   }`}
                   aria-hidden="true"
@@ -239,29 +241,29 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 </span>
               </div>
 
-              <h2 className="font-display text-2xl font-bold tracking-tight text-[#18181B] sm:text-[32px] sm:leading-[1.15] text-balance">
+              <h2 className="font-display text-2xl font-bold tracking-tight text-white sm:text-[32px] sm:leading-[1.15] text-balance">
                 {calculatedNext.course.title}
               </h2>
 
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm font-medium text-[#18181B]/90">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm font-medium text-slate-300">
                 <span className="inline-flex items-center gap-1.5">
-                  <BookOpen className="h-4 w-4 text-[#18181B]" aria-hidden="true" />
+                  <BookOpen className="h-4 w-4 text-teal-400" aria-hidden="true" />
                   <span>
                     {calculatedNext.course.batchName} ({calculatedNext.course.code})
                   </span>
                 </span>
-                <span aria-hidden="true" className="text-[#18181B]/45">
+                <span aria-hidden="true" className="text-slate-600">
                   ·
                 </span>
                 <span className="inline-flex items-center gap-1.5 tabular-nums">
-                  <Calendar className="h-4 w-4 text-[#18181B]" aria-hidden="true" />
+                  <Calendar className="h-4 w-4 text-teal-400" aria-hidden="true" />
                   <span>{calculatedNext.displayDayTime}</span>
                 </span>
-                <span aria-hidden="true" className="text-[#18181B]/45">
+                <span aria-hidden="true" className="text-slate-600">
                   ·
                 </span>
                 <span className="inline-flex items-center gap-1.5 tabular-nums">
-                  <Clock className="h-4 w-4 text-[#18181B]" aria-hidden="true" />
+                  <Clock className="h-4 w-4 text-teal-400" aria-hidden="true" />
                   <span>{calculatedNext.durationLabel}</span>
                 </span>
               </div>
@@ -280,9 +282,9 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                       `${calculatedNext.course.title} · ${calculatedNext.course.batchName}`
                     )
                   }
-                  className="inline-flex items-center gap-2.5 rounded-full bg-[#18181B] px-6 py-3.5 text-sm font-semibold text-white transition-transform duration-150 hover:bg-[#27272A] active:scale-[0.99] whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#18181B] shadow-md"
+                  className="inline-flex items-center gap-2.5 rounded-full bg-indigo-600 px-6 py-3.5 text-sm font-semibold text-white transition-all duration-150 hover:bg-indigo-500 active:scale-[0.99] whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 shadow-md"
                 >
-                  <Video className="h-4 w-4 text-[#F97316]" aria-hidden="true" />
+                  <Video className="h-4 w-4 text-teal-300" aria-hidden="true" />
                   <span>Join Live Session</span>
                   <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
                 </a>
@@ -290,13 +292,13 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 <button
                   type="button"
                   disabled
-                  className="inline-flex cursor-not-allowed items-center gap-2.5 rounded-full bg-[#18181B]/25 px-6 py-3.5 text-sm font-semibold text-[#18181B]/75 whitespace-nowrap shrink-0"
+                  className="inline-flex cursor-not-allowed items-center gap-2.5 rounded-full bg-slate-800 px-6 py-3.5 text-sm font-semibold text-slate-400 whitespace-nowrap shrink-0 border border-slate-700"
                 >
                   <VideoOff className="h-4 w-4" aria-hidden="true" />
                   <span>Link not posted yet</span>
                 </button>
               )}
-              <p className="text-xs font-medium text-[#18181B]/80">
+              <p className="text-xs font-medium text-slate-400">
                 {hasMeetingLink
                   ? 'Opens permanent video classroom in a new tab'
                   : 'Your tutor will save the classroom meeting link shortly'}
@@ -307,20 +309,20 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       ) : (
         <section
           aria-label="No live class scheduled"
-          className="rounded-3xl border border-[#E7E5E4] bg-[#FFFFFF] p-6 sm:p-7 shadow-sm"
+          className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-7 shadow-sm"
         >
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1.5">
-              <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#71717A]">
+              <div className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
                 <Clock className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>NO LIVE CLASS CURRENTLY SCHEDULED</span>
               </div>
-              <h2 className="font-display text-lg font-bold text-[#18181B]">
+              <h2 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">
                 {enrolledCourses.length === 0
                   ? 'Enroll in courses to see live lectures'
                   : 'No upcoming live sessions posted for your courses'}
               </h2>
-              <p className="text-xs text-[#52525B]">
+              <p className="text-xs text-slate-600 dark:text-slate-400">
                 Your tutor will configure your batch weekly schedule and save the video classroom link.
               </p>
             </div>
@@ -328,7 +330,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             <button
               type="button"
               onClick={() => onNavigateTab('schedule')}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#E7E5E4] bg-[#F8F7F4] px-4 py-2 text-xs font-semibold text-[#18181B] hover:bg-[#E7E5E4]/60 whitespace-nowrap shrink-0"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 whitespace-nowrap shrink-0"
             >
               <span>View Full Schedule</span>
               <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
@@ -342,14 +344,14 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         {/* Left Column: My Courses / Batches */}
         <section aria-label="My courses" className="space-y-4 lg:col-span-5">
           <div className="flex items-center justify-between">
-            <h2 className="font-display text-lg font-bold tracking-tight text-[#18181B]">
+            <h2 className="font-display text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">
               My Courses &amp; Batches
             </h2>
             {enrolledCourses.length > 0 && (
               <button
                 type="button"
                 onClick={() => onNavigateTab('schedule')}
-                className="text-xs font-semibold text-[#4338CA] hover:underline whitespace-nowrap shrink-0"
+                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap shrink-0"
               >
                 Full Schedule
               </button>
@@ -357,18 +359,18 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           </div>
 
           {enrolledCourses.length === 0 ? (
-            <div className="rounded-2xl border border-[#E7E5E4] bg-[#FFFFFF] px-5 py-10 text-center">
-              <BookOpen className="mx-auto h-8 w-8 text-[#A1A1AA]" />
-              <p className="mt-3 text-sm font-semibold text-[#18181B]">
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-5 py-10 text-center">
+              <BookOpen className="mx-auto h-8 w-8 text-slate-400" />
+              <p className="mt-3 text-sm font-semibold text-slate-900 dark:text-slate-100">
                 You haven&apos;t been enrolled in any courses yet
               </p>
-              <p className="mt-1 text-xs text-[#71717A]">
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 Once your tutor enrolls you in an IGCSE or AS Level batch, your courses and materials will appear here.
               </p>
               <button
                 type="button"
                 onClick={onSwitchToTeacher}
-                className="mt-4 rounded-lg border border-[#E7E5E4] bg-[#F8F7F4] px-3.5 py-1.5 text-xs font-semibold text-[#18181B] hover:bg-[#E7E5E4]/60"
+                className="mt-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
               >
                 Manage Enrollments in Teacher Admin
               </button>
@@ -382,7 +384,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 return (
                   <article
                     key={course.id}
-                    className={`overflow-hidden rounded-2xl border border-[#E7E5E4] bg-[#FFFFFF] transition-colors duration-150 ${accent.ringHover}`}
+                    className={`overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors duration-150 ${accent.ringHover}`}
                   >
                     <div className={`${accent.headerBg} ${accent.headerText} px-5 py-3.5`}>
                       <div className="flex items-center justify-between gap-2">
@@ -401,8 +403,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                     <div className="space-y-4 p-5">
                       {(course.scheduleCadence ||
                         (course.weeklySlots && course.weeklySlots.length > 0)) && (
-                        <div className="flex items-center gap-1.5 rounded-lg border border-[#FED7AA]/80 bg-[#FFF7ED] px-2.5 py-1 text-xs font-semibold text-[#C2410C] w-fit">
-                          <Calendar className="h-3.5 w-3.5 text-[#EA580C]" />
+                        <div className="flex items-center gap-1.5 rounded-lg border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-950/40 px-2.5 py-1 text-xs font-semibold text-indigo-700 dark:text-indigo-300 w-fit">
+                          <Calendar className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
                           <span>
                             {course.scheduleCadence ||
                               formatWeeklySlots(course.weeklySlots || [])}
@@ -410,19 +412,19 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                         </div>
                       )}
 
-                      <div className="flex items-center justify-between border-t border-[#F4F4F5] pt-3.5">
-                        <div className="flex items-center gap-4 text-xs text-[#52525B] tabular-nums">
+                      <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3.5">
+                        <div className="flex items-center gap-4 text-xs text-slate-600 dark:text-slate-400 tabular-nums">
                           <span>
-                            <strong className="font-semibold text-[#18181B]">
+                            <strong className="font-semibold text-slate-900 dark:text-slate-100">
                               {counts.upcoming}
                             </strong>{' '}
                             upcoming {counts.upcoming === 1 ? 'class' : 'classes'}
                           </span>
-                          <span aria-hidden="true" className="text-[#D4D4D8]">
+                          <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">
                             ·
                           </span>
                           <span>
-                            <strong className="font-semibold text-[#18181B]">
+                            <strong className="font-semibold text-slate-900 dark:text-slate-100">
                               {counts.materials}
                             </strong>{' '}
                             {counts.materials === 1 ? 'material' : 'materials'}
@@ -453,7 +455,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           className="space-y-4 lg:col-span-7"
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="font-display text-lg font-bold tracking-tight text-[#18181B]">
+            <h2 className="font-display text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">
               Notes &amp; Recordings
             </h2>
 
@@ -461,7 +463,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               <div
                 role="group"
                 aria-label="Filter study materials"
-                className="flex items-center gap-1 rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] p-1"
+                className="flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1"
               >
                 {(
                   [
@@ -476,8 +478,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                     onClick={() => setMaterialFilter(option.id)}
                     className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
                       materialFilter === option.id
-                        ? 'bg-[#18181B] text-white'
-                        : 'text-[#52525B] hover:text-[#18181B]'
+                        ? 'bg-slate-900 dark:bg-indigo-600 text-white'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                     }`}
                   >
                     {option.label}
@@ -487,21 +489,21 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             )}
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-[#E7E5E4] bg-[#FFFFFF]">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
             {filteredMaterials.length === 0 ? (
               <div className="px-6 py-12 text-center">
-                <FileText className="mx-auto h-8 w-8 text-[#A1A1AA]" />
-                <p className="mt-3 text-sm font-semibold text-[#18181B]">
+                <FileText className="mx-auto h-8 w-8 text-slate-400" />
+                <p className="mt-3 text-sm font-semibold text-slate-900 dark:text-slate-100">
                   No study materials available
                 </p>
-                <p className="mt-1 text-xs text-[#71717A]">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   {enrolledCourses.length === 0
                     ? 'Enroll in courses to access lecture recordings and revision notes.'
                     : 'Notes and class recordings uploaded by your tutor will appear here.'}
                 </p>
               </div>
             ) : (
-              <ul className="divide-y divide-[#E7E5E4]">
+              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredMaterials.map((item) => {
                   const course = courseLookup[item.courseId];
                   const isRecording = item.type === 'recording';
@@ -516,14 +518,14 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                   return (
                     <li
                       key={item.id}
-                      className="flex flex-col gap-3 px-5 py-4 transition-colors duration-150 hover:bg-[#FAF9F7] sm:flex-row sm:items-center sm:justify-between"
+                      className="flex flex-col gap-3 px-5 py-4 transition-colors duration-150 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="flex items-start gap-3.5 min-w-0">
                         <span
                           className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border ${
                             isRecording
-                              ? 'border-[#F97316]/25 bg-[#FFF7ED] text-[#C2410C]'
-                              : 'border-[#4338CA]/20 bg-[#EEF2FF] text-[#4338CA]'
+                              ? 'border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-300'
+                              : 'border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300'
                           }`}
                         >
                           {isRecording ? (
@@ -534,11 +536,11 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                         </span>
 
                         <div className="min-w-0 space-y-1">
-                          <h3 className="text-sm font-semibold text-[#18181B] leading-snug">
+                          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 leading-snug">
                             {item.title}
                           </h3>
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[#71717A] tabular-nums">
-                            <span className="font-medium text-[#52525B]">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                            <span className="font-medium text-slate-700 dark:text-slate-300">
                               {course ? `${course.title} · ${course.batchName}` : 'General'}
                             </span>
                             <span aria-hidden="true">·</span>
@@ -552,10 +554,10 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                       <div className="flex shrink-0 flex-wrap items-center gap-2 pl-12 sm:pl-0">
                         {attachment && (
                           <>
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#E7E5E4] bg-[#FFFFFF] px-2.5 py-1 text-[11px] font-medium text-[#52525B]">
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300">
                               {isImage ? <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" /> : isVideo ? <Video className="h-3.5 w-3.5" aria-hidden="true" /> : <FileText className="h-3.5 w-3.5" aria-hidden="true" />}
                               {attachmentLabel}
-                              <span className="text-[#A1A1AA]">·</span>
+                              <span className="text-slate-400">·</span>
                               {formatFileSize(attachment.fileSize)}
                             </span>
                             <button
@@ -564,7 +566,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                                 downloadDataUrl(attachment.fileData, attachment.fileName);
                                 onLogActivity(activeStudent.id, 'Downloaded Note/Recording', item.title);
                               }}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] px-3.5 py-2 text-xs font-semibold text-[#18181B] transition-colors hover:border-[#18181B] hover:bg-[#18181B] hover:text-white"
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 transition-colors hover:border-slate-900 dark:hover:border-slate-500 hover:bg-slate-900 dark:hover:bg-slate-700 hover:text-white"
                             >
                               <Download className="h-3.5 w-3.5" aria-hidden="true" />
                               Download
@@ -577,14 +579,14 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={() => onLogActivity(activeStudent.id, 'Opened Note/Recording', item.title)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-[#E7E5E4] bg-[#FFFFFF] px-3.5 py-2 text-xs font-semibold text-[#18181B] transition-colors duration-150 hover:border-[#18181B] hover:bg-[#18181B] hover:text-white whitespace-nowrap shrink-0"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 transition-colors duration-150 hover:border-slate-900 dark:hover:border-slate-500 hover:bg-slate-900 dark:hover:bg-slate-700 hover:text-white whitespace-nowrap shrink-0"
                           >
                             <span>Open</span>
                             <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                           </a>
                         )}
                         {!attachment && !hasUrl && (
-                          <span className="inline-flex items-center rounded-lg border border-[#E7E5E5] bg-[#F8F7F4] px-3.5 py-2 text-xs font-medium text-[#71717A]">
+                          <span className="inline-flex items-center rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-xs font-medium text-slate-400">
                             Unavailable
                           </span>
                         )}

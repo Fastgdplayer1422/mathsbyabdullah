@@ -1,7 +1,8 @@
-import React from 'react';
-import { LogOut } from 'lucide-react';
+import React, { useState } from 'react';
+import { Loader2, LogOut, Moon, Sun } from 'lucide-react';
 import { RoleMode, Student, StudentTab, TeacherTab } from '../types/portal';
 import { BrandMonogram } from './BrandMonogram';
+import { useTheme } from '../hooks/useTheme';
 
 interface TopNavProps {
   role: RoleMode;
@@ -11,7 +12,7 @@ interface TopNavProps {
   onTeacherTabChange?: (tab: TeacherTab) => void;
   activeStudent?: Student | null;
   pendingRequestsCount?: number;
-  onSignOut: () => void;
+  onSignOut: () => Promise<void> | void;
 }
 
 const STUDENT_TABS: { id: StudentTab; label: string }[] = [
@@ -39,6 +40,18 @@ export const TopNav: React.FC<TopNavProps> = ({
   pendingRequestsCount = 0,
   onSignOut,
 }) => {
+  const { theme, toggleTheme } = useTheme();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  const handleSignOutClick = async () => {
+    setIsSigningOut(true);
+    try {
+      await onSignOut();
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
+
   const getInitials = (name: string) => {
     const parts = name.trim().split(/\s+/);
     if (parts.length >= 2) {
@@ -48,12 +61,12 @@ export const TopNav: React.FC<TopNavProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[#E7E5E4] bg-[#F8F7F4]/95 backdrop-blur-sm">
+    <header className="sticky top-0 z-30 border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md transition-colors">
       <div className="mx-auto flex max-w-[1240px] items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:gap-6">
         {/* Left: Brand Monogram (MA) + MathsByAbdullah */}
         <div className="flex shrink-0 items-center gap-2.5">
           <BrandMonogram size="sm" />
-          <span className="font-display text-[17px] font-bold tracking-tight text-[#18181B] whitespace-nowrap shrink-0">
+          <span className="font-display text-[17px] font-bold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0">
             MathsByAbdullah
           </span>
         </div>
@@ -68,15 +81,17 @@ export const TopNav: React.FC<TopNavProps> = ({
                     key={tab.id}
                     type="button"
                     onClick={() => onStudentTabChange(tab.id)}
-                    className={`relative py-1.5 text-sm font-medium transition-colors duration-150 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4338CA] rounded ${
-                      active ? 'text-[#18181B]' : 'text-[#71717A] hover:text-[#18181B]'
+                    className={`relative py-1.5 text-sm font-medium transition-colors duration-150 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 rounded ${
+                      active
+                        ? 'text-slate-900 dark:text-slate-100 font-semibold'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                     }`}
                   >
                     {tab.label}
                     {active && (
                       <span
                         aria-hidden="true"
-                        className="absolute inset-x-0 -bottom-[13px] h-[2px] bg-[#4338CA]"
+                        className="absolute inset-x-0 -bottom-[13px] h-[2px] bg-indigo-600 dark:bg-indigo-400"
                       />
                     )}
                   </button>
@@ -91,14 +106,16 @@ export const TopNav: React.FC<TopNavProps> = ({
                     key={tab.id}
                     type="button"
                     onClick={() => onTeacherTabChange(tab.id)}
-                    className={`relative inline-flex items-center gap-1.5 py-1.5 text-sm font-medium transition-colors duration-150 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4338CA] rounded ${
-                      active ? 'text-[#18181B]' : 'text-[#71717A] hover:text-[#18181B]'
+                    className={`relative inline-flex items-center gap-1.5 py-1.5 text-sm font-medium transition-colors duration-150 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 rounded ${
+                      active
+                        ? 'text-slate-900 dark:text-slate-100 font-semibold'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                     }`}
                   >
                     <span>{tab.label}</span>
                     {isStudentTab && pendingRequestsCount > 0 && (
                       <span
-                        className="inline-flex items-center justify-center rounded-full bg-[#EA580C] px-1.5 py-0.5 text-[10px] font-bold text-white tabular-nums leading-none"
+                        className="inline-flex items-center justify-center rounded-full bg-teal-600 px-1.5 py-0.5 text-[10px] font-bold text-white tabular-nums leading-none"
                         title={`${pendingRequestsCount} pending approval request(s)`}
                       >
                         {pendingRequestsCount}
@@ -107,7 +124,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                     {active && (
                       <span
                         aria-hidden="true"
-                        className="absolute inset-x-0 -bottom-[13px] h-[2px] bg-[#F97316]"
+                        className="absolute inset-x-0 -bottom-[13px] h-[2px] bg-indigo-600 dark:bg-indigo-400"
                       />
                     )}
                   </button>
@@ -115,11 +132,26 @@ export const TopNav: React.FC<TopNavProps> = ({
               })}
         </nav>
 
-        {/* Right: User Profile Badge + Sign Out Button */}
-        <div className="flex shrink-0 items-center gap-3">
+        {/* Right: Theme Toggle + User Profile Badge + Sign Out Button */}
+        <div className="flex shrink-0 items-center gap-2.5 sm:gap-3">
+          {/* Theme Toggle Button */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors shadow-2xs"
+          >
+            {theme === 'dark' ? (
+              <Sun className="h-4 w-4 text-amber-300" aria-hidden="true" />
+            ) : (
+              <Moon className="h-4 w-4 text-slate-600" aria-hidden="true" />
+            )}
+          </button>
+
           {/* Profile Badge */}
           <div
-            className="flex items-center gap-2 rounded-full border border-[#E7E5E4] bg-[#FFFFFF] py-1 pl-1.5 pr-3 shrink-0"
+            className="flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 py-1 pl-1.5 pr-3 shrink-0"
             title={
               role === 'student' && activeStudent
                 ? `${activeStudent.name} (${activeStudent.gradeLevel})`
@@ -128,7 +160,7 @@ export const TopNav: React.FC<TopNavProps> = ({
           >
             <span
               className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold text-white ${
-                role === 'student' ? 'bg-[#4338CA]' : 'bg-[#18181B]'
+                role === 'student' ? 'bg-indigo-600 dark:bg-indigo-500' : 'bg-slate-900 dark:bg-slate-700'
               }`}
             >
               {role === 'student'
@@ -137,7 +169,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                   : 'ST'
                 : 'MA'}
             </span>
-            <span className="text-xs font-medium text-[#18181B] whitespace-nowrap max-w-[130px] truncate">
+            <span className="text-xs font-medium text-slate-900 dark:text-slate-100 whitespace-nowrap max-w-[130px] truncate">
               {role === 'student'
                 ? activeStudent
                   ? activeStudent.name
@@ -146,13 +178,18 @@ export const TopNav: React.FC<TopNavProps> = ({
             </span>
           </div>
 
-          {/* Sign Out Button */}
+          {/* Sign Out Button with Loading Spinner */}
           <button
             type="button"
-            onClick={onSignOut}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[#E7E5E4] bg-[#FFFFFF] px-3.5 py-1.5 text-xs font-semibold text-[#52525B] hover:border-[#18181B] hover:text-[#18181B] transition-colors whitespace-nowrap shrink-0"
+            onClick={handleSignOutClick}
+            disabled={isSigningOut}
+            className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-slate-400 dark:hover:border-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0 disabled:opacity-50"
           >
-            <LogOut className="h-3.5 w-3.5" />
+            {isSigningOut ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
+            ) : (
+              <LogOut className="h-3.5 w-3.5" />
+            )}
             <span className="hidden sm:inline">Sign Out</span>
           </button>
         </div>
@@ -161,7 +198,7 @@ export const TopNav: React.FC<TopNavProps> = ({
       {/* Mobile Navigation Strip */}
       <nav
         aria-label="Mobile navigation"
-        className="flex lg:hidden items-center gap-2 overflow-x-auto border-t border-[#E7E5E4] bg-[#FFFFFF] px-4 py-2"
+        className="flex lg:hidden items-center gap-2 overflow-x-auto border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-2"
       >
         {role === 'student' && onStudentTabChange
           ? STUDENT_TABS.map((tab) => {
@@ -172,7 +209,9 @@ export const TopNav: React.FC<TopNavProps> = ({
                   type="button"
                   onClick={() => onStudentTabChange(tab.id)}
                   className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-                    active ? 'bg-[#4338CA] text-white' : 'text-[#52525B] hover:bg-[#F4F4F5]'
+                    active
+                      ? 'bg-indigo-600 text-white'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
                   {tab.label}
@@ -189,12 +228,14 @@ export const TopNav: React.FC<TopNavProps> = ({
                   type="button"
                   onClick={() => onTeacherTabChange(tab.id)}
                   className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-                    active ? 'bg-[#F97316] text-white' : 'text-[#52525B] hover:bg-[#F4F4F5]'
+                    active
+                      ? 'bg-indigo-600 text-white'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
                   <span>{tab.label}</span>
                   {isStudentTab && pendingRequestsCount > 0 && (
-                    <span className="rounded-full bg-white px-1.5 py-0.2 text-[9px] font-bold text-[#EA580C] tabular-nums">
+                    <span className="rounded-full bg-teal-500 px-1.5 py-0.2 text-[9px] font-bold text-white tabular-nums">
                       {pendingRequestsCount}
                     </span>
                   )}

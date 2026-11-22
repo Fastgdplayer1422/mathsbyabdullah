@@ -3,14 +3,18 @@ import {
   AlertCircle,
   ArrowRight,
   GraduationCap,
+  Loader2,
   Lock,
   Mail,
+  Moon,
   ShieldCheck,
+  Sun,
   User,
 } from 'lucide-react';
 import { PortalState } from '../../types/portal';
 import { validateStudentEmail } from '../../utils/formatters';
 import { BrandMonogram } from '../BrandMonogram';
+import { useTheme } from '../../hooks/useTheme';
 
 interface AuthPageProps {
   state: PortalState;
@@ -28,13 +32,14 @@ interface AuthPageProps {
 }
 
 export const AuthPage: React.FC<AuthPageProps> = ({
-  state,
+  state: _state,
   initialMode = 'student-signin',
   onBackToLanding,
   onStudentLogin,
   onStudentRegister,
   onTeacherLogin,
 }) => {
+  const { theme, toggleTheme } = useTheme();
   const [authRole, setAuthRole] = useState<'student' | 'teacher'>(
     initialMode === 'teacher' ? 'teacher' : 'student'
   );
@@ -57,9 +62,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   const [regGrade, setRegGrade] = useState('Year 11 / IGCSE');
   const [regNote, setRegNote] = useState('');
 
-  // Teacher Sign In State (private & unpopulated)
+  // Teacher Sign In State
   const [teacherEmail, setTeacherEmail] = useState('');
   const [teacherPassword, setTeacherPassword] = useState('');
+
+  // Loading spinner states for async actions
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form error state
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -69,8 +77,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
-    const result = await onStudentLogin(studentEmail.trim().toLowerCase(), studentPassword, studentRememberMe);
-    if (result.error) setErrorMessage(result.error);
+    setIsSubmitting(true);
+    try {
+      const result = await onStudentLogin(studentEmail.trim().toLowerCase(), studentPassword, studentRememberMe);
+      if (result.error) setErrorMessage(result.error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleStudentSignUp = async (e: React.FormEvent) => {
@@ -82,7 +95,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({
       return;
     }
 
-    // Strict client-side email domain validation
     const emailCheck = validateStudentEmail(regEmail);
     if (!emailCheck.valid) {
       setErrorMessage(emailCheck.error || 'Please enter a valid personal or school email.');
@@ -94,65 +106,90 @@ export const AuthPage: React.FC<AuthPageProps> = ({
       return;
     }
 
-    const res = await onStudentRegister({
-      name: regName.trim(),
-      email: regEmail.trim().toLowerCase(),
-      password: regPassword,
-      gradeLevel: regGrade.trim(),
-      requestNote: regNote.trim(),
-    });
+    setIsSubmitting(true);
+    try {
+      const res = await onStudentRegister({
+        name: regName.trim(),
+        email: regEmail.trim().toLowerCase(),
+        password: regPassword,
+        gradeLevel: regGrade.trim(),
+        requestNote: regNote.trim(),
+      });
 
-    if (!res.success) {
-      setErrorMessage(res.error || 'Unable to submit registration. Please try again.');
-      return;
+      if (!res.success) {
+        setErrorMessage(res.error || 'Unable to submit registration. Please try again.');
+        return;
+      }
+
+      setSuccessMessage(
+        res.confirmationRequired
+          ? 'Check your email to confirm your account. Once confirmed, sign in to see your approval status.'
+          : 'Registration submitted. Your account is pending teacher approval.'
+      );
+      setStudentMode('signin');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setSuccessMessage(res.confirmationRequired
-      ? 'Check your email to confirm your account. Once confirmed, sign in to see your approval status.'
-      : 'Registration submitted. Your account is pending teacher approval.');
-    setStudentMode('signin');
   };
 
   const handleTeacherSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
-    const result = await onTeacherLogin(teacherEmail.trim().toLowerCase(), teacherPassword.trim(), teacherRememberMe);
-    if (result.error) setErrorMessage(result.error);
+    setIsSubmitting(true);
+    try {
+      const result = await onTeacherLogin(teacherEmail.trim().toLowerCase(), teacherPassword.trim(), teacherRememberMe);
+      if (result.error) setErrorMessage(result.error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-center items-center bg-[#F8F7F4] px-4 py-12 selection:bg-[#4338CA]/15 selection:text-[#4338CA]">
+    <div className="min-h-screen flex flex-col justify-center items-center bg-slate-50 dark:bg-[#0B0F17] px-4 py-12 selection:bg-indigo-500/20 text-slate-900 dark:text-slate-100 transition-colors">
       <div className="w-full max-w-[460px] space-y-6">
-        {onBackToLanding && (
-          <div>
+        <div className="flex items-center justify-between">
+          {onBackToLanding ? (
             <button
               type="button"
               onClick={onBackToLanding}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#52525B] hover:text-[#18181B] transition-colors rounded-lg py-1 px-2 -ml-2"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors rounded-lg py-1 px-2 -ml-2"
             >
               <span>← Back to Home</span>
             </button>
-          </div>
-        )}
+          ) : <div />}
+
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+          >
+            {theme === 'dark' ? (
+              <Sun className="h-4 w-4 text-amber-300" aria-hidden="true" />
+            ) : (
+              <Moon className="h-4 w-4 text-slate-600" aria-hidden="true" />
+            )}
+          </button>
+        </div>
 
         {/* Brand Lockup with MA Monogram */}
         <div className="text-center space-y-2">
           <div className="flex justify-center">
             <BrandMonogram size="lg" />
           </div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-[#18181B]">
+          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
             MathsByAbdullah
           </h1>
-          <p className="text-xs text-[#71717A]">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             Official Mathematics Learning Portal for IGCSE, O Level &amp; AS Level
           </p>
         </div>
 
         {/* Main Auth Card */}
-        <div className="overflow-hidden rounded-3xl border border-[#E7E5E4] bg-[#FFFFFF] shadow-sm">
+        <div className="overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-colors">
           {/* Top Role Selector */}
-          <div className="grid grid-cols-2 border-b border-[#E7E5E4] bg-[#FAF9F7] p-1.5">
+          <div className="grid grid-cols-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 p-1.5">
             <button
               type="button"
               onClick={() => {
@@ -161,11 +198,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({
               }}
               className={`flex items-center justify-center gap-2 rounded-2xl py-2.5 text-xs font-semibold transition-all ${
                 authRole === 'student'
-                  ? 'bg-white text-[#18181B] shadow-sm'
-                  : 'text-[#71717A] hover:text-[#18181B]'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              <GraduationCap className="h-4 w-4 text-[#4338CA]" />
+              <GraduationCap className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
               <span>Student Portal</span>
             </button>
             <button
@@ -176,11 +213,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({
               }}
               className={`flex items-center justify-center gap-2 rounded-2xl py-2.5 text-xs font-semibold transition-all ${
                 authRole === 'teacher'
-                  ? 'bg-white text-[#18181B] shadow-sm'
-                  : 'text-[#71717A] hover:text-[#18181B]'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              <ShieldCheck className="h-4 w-4 text-[#F97316]" />
+              <ShieldCheck className="h-4 w-4 text-teal-600 dark:text-teal-400" />
               <span>Teacher Admin</span>
             </button>
           </div>
@@ -188,13 +225,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           <div className="p-6 sm:p-7 space-y-5">
             {/* Error Banner */}
             {errorMessage && (
-              <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+              <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 p-3 text-xs text-red-700 dark:text-red-300">
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                 <p className="leading-snug">{errorMessage}</p>
               </div>
             )}
             {successMessage && (
-              <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-relaxed text-emerald-800">
+              <div role="status" className="rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/40 p-3 text-xs leading-relaxed text-emerald-800 dark:text-emerald-300">
                 {successMessage}
               </div>
             )}
@@ -202,14 +239,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             {authRole === 'student' ? (
               <div className="space-y-5">
                 {/* Sign In vs Sign Up Toggle */}
-                <div className="flex items-center justify-between border-b border-[#F4F4F5] pb-3">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
                   <div>
-                    <h2 className="font-display text-base font-bold text-[#18181B]">
+                    <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-100">
                       {studentMode === 'signin'
                         ? 'Sign in to your dashboard'
                         : 'Register for student access'}
                     </h2>
-                    <p className="text-xs text-[#71717A]">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
                       {studentMode === 'signin'
                         ? 'Access your enrolled batches and live classes'
                         : 'Verified student registrations are approved directly'}
@@ -221,7 +258,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                       setStudentMode(studentMode === 'signin' ? 'signup' : 'signin');
                       setErrorMessage(null);
                     }}
-                    className="text-xs font-semibold text-[#4338CA] hover:underline whitespace-nowrap shrink-0"
+                    className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap shrink-0"
                   >
                     {studentMode === 'signin' ? 'New student?' : 'Have an account?'}
                   </button>
@@ -233,23 +270,24 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     <div className="space-y-1.5">
                       <label
                         htmlFor="std-login-email"
-                        className="block text-xs font-semibold text-[#18181B]"
+                        className="block text-xs font-semibold text-slate-900 dark:text-slate-200"
                       >
                         Student Email Address
                       </label>
                       <div className="relative">
                         <Mail
-                          className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#71717A]"
+                          className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
                           aria-hidden="true"
                         />
                         <input
                           id="std-login-email"
                           type="email"
                           required
+                          disabled={isSubmitting}
                           value={studentEmail}
                           onChange={(e) => setStudentEmail(e.target.value)}
                           placeholder="e.g. yourname@gmail.com"
-                          className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] py-2.5 pl-10 pr-3.5 text-sm text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 py-2.5 pl-10 pr-3.5 text-sm text-slate-900 dark:text-slate-100 focus:border-indigo-600 focus:bg-white dark:focus:bg-slate-900 focus:outline-none disabled:opacity-50"
                         />
                       </div>
                     </div>
@@ -257,37 +295,38 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     <div className="space-y-1.5">
                       <label
                         htmlFor="std-login-password"
-                        className="block text-xs font-semibold text-[#18181B]"
+                        className="block text-xs font-semibold text-slate-900 dark:text-slate-200"
                       >
                         Password
                       </label>
                       <div className="relative">
                         <Lock
-                          className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#71717A]"
+                          className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
                           aria-hidden="true"
                         />
                         <input
                           id="std-login-password"
                           type="password"
                           required
+                          disabled={isSubmitting}
                           value={studentPassword}
                           onChange={(e) => setStudentPassword(e.target.value)}
                           placeholder="••••••••"
-                          className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] py-2.5 pl-10 pr-3.5 text-sm text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 py-2.5 pl-10 pr-3.5 text-sm text-slate-900 dark:text-slate-100 focus:border-indigo-600 focus:bg-white dark:focus:bg-slate-900 focus:outline-none disabled:opacity-50"
                         />
                       </div>
                     </div>
 
                     {/* Remember Me Checkbox */}
                     <div className="flex items-center justify-between text-xs pt-1">
-                      <label className="flex cursor-pointer items-center gap-2 text-[#52525B]">
+                      <label className="flex cursor-pointer items-center gap-2 text-slate-600 dark:text-slate-400">
                         <input
                           type="checkbox"
                           checked={studentRememberMe}
                           onChange={(e) => setStudentRememberMe(e.target.checked)}
-                          className="h-3.5 w-3.5 rounded text-[#4338CA] focus:ring-[#4338CA]"
+                          className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-600 border-slate-300 dark:border-slate-600"
                         />
-                        <span className="select-none font-medium text-[#18181B]">
+                        <span className="select-none font-medium text-slate-800 dark:text-slate-200">
                           Remember me on this device
                         </span>
                       </label>
@@ -295,10 +334,20 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
                     <button
                       type="submit"
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#18181B] py-3 text-xs font-semibold text-white transition-colors hover:bg-[#27272A]"
+                      disabled={isSubmitting}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-900 dark:bg-indigo-600 py-3 text-xs font-semibold text-white transition-colors hover:bg-slate-800 dark:hover:bg-indigo-500 disabled:opacity-50"
                     >
-                      <span>Sign In to Student View</span>
-                      <ArrowRight className="h-4 w-4" />
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin text-white" />
+                          <span>Signing in...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Sign In to Student View</span>
+                          <ArrowRight className="h-4 w-4" />
+                        </>
+                      )}
                     </button>
                   </form>
                 ) : (
@@ -307,23 +356,24 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     <div className="space-y-1.5">
                       <label
                         htmlFor="reg-name"
-                        className="block text-xs font-semibold text-[#18181B]"
+                        className="block text-xs font-semibold text-slate-900 dark:text-slate-200"
                       >
                         Full Name
                       </label>
                       <div className="relative">
                         <User
-                          className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#71717A]"
+                          className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
                           aria-hidden="true"
                         />
                         <input
                           id="reg-name"
                           type="text"
                           required
+                          disabled={isSubmitting}
                           value={regName}
                           onChange={(e) => setRegName(e.target.value)}
                           placeholder="e.g. Taha Siddiqui"
-                          className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] py-2 pl-10 pr-3 text-sm text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 py-2 pl-10 pr-3 text-sm text-slate-900 dark:text-slate-100 focus:border-indigo-600 focus:bg-white dark:focus:bg-slate-900 focus:outline-none disabled:opacity-50"
                         />
                       </div>
                     </div>
@@ -332,7 +382,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                       <div className="space-y-1.5">
                         <label
                           htmlFor="reg-email"
-                          className="block text-xs font-semibold text-[#18181B]"
+                          className="block text-xs font-semibold text-slate-900 dark:text-slate-200"
                         >
                           Email Address
                         </label>
@@ -340,17 +390,18 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                           id="reg-email"
                           type="email"
                           required
+                          disabled={isSubmitting}
                           value={regEmail}
                           onChange={(e) => setRegEmail(e.target.value)}
                           placeholder="student@gmail.com"
-                          className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-2 text-sm text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:border-indigo-600 focus:bg-white dark:focus:bg-slate-900 focus:outline-none disabled:opacity-50"
                         />
                       </div>
 
                       <div className="space-y-1.5">
                         <label
                           htmlFor="reg-password"
-                          className="block text-xs font-semibold text-[#18181B]"
+                          className="block text-xs font-semibold text-slate-900 dark:text-slate-200"
                         >
                           Create Password
                         </label>
@@ -358,10 +409,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                           id="reg-password"
                           type="password"
                           required
+                          disabled={isSubmitting}
                           value={regPassword}
                           onChange={(e) => setRegPassword(e.target.value)}
                           placeholder="At least 8 characters"
-                          className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-2 text-sm text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:border-indigo-600 focus:bg-white dark:focus:bg-slate-900 focus:outline-none disabled:opacity-50"
                         />
                       </div>
                     </div>
@@ -369,15 +421,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     <div className="space-y-1.5">
                       <label
                         htmlFor="reg-grade"
-                        className="block text-xs font-semibold text-[#18181B]"
+                        className="block text-xs font-semibold text-slate-900 dark:text-slate-200"
                       >
                         Academic Grade / Exam Target
                       </label>
                       <select
                         id="reg-grade"
                         value={regGrade}
+                        disabled={isSubmitting}
                         onChange={(e) => setRegGrade(e.target.value)}
-                        className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-2 text-sm text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:border-indigo-600 focus:bg-white dark:focus:bg-slate-900 focus:outline-none disabled:opacity-50"
                       >
                         <option value="Year 10 / IGCSE">Year 10 / IGCSE</option>
                         <option value="Year 11 / IGCSE">Year 11 / IGCSE</option>
@@ -390,30 +443,41 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     <div className="space-y-1.5">
                       <label
                         htmlFor="reg-note"
-                        className="block text-xs font-semibold text-[#18181B]"
+                        className="block text-xs font-semibold text-slate-900 dark:text-slate-200"
                       >
                         Request Course / Note to Abdullah (Optional)
                       </label>
                       <textarea
                         id="reg-note"
                         rows={2}
+                        disabled={isSubmitting}
                         value={regNote}
                         onChange={(e) => setRegNote(e.target.value)}
                         placeholder="e.g. Interested in IGCSE Mathematics Extended paper drills..."
-                        className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] px-3 py-2 text-xs text-[#18181B] focus:border-[#4338CA] focus:bg-white focus:outline-none"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 focus:border-indigo-600 focus:bg-white dark:focus:bg-slate-900 focus:outline-none disabled:opacity-50"
                       />
                     </div>
 
-                    <p className="text-[11px] text-[#71717A]">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       Disposable and placeholder domains (@example.com, @test.com) are rejected. Please use your legitimate personal or school email.
                     </p>
 
                     <button
                       type="submit"
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#18181B] py-3 text-xs font-semibold text-white transition-colors hover:bg-[#27272A]"
+                      disabled={isSubmitting}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-900 dark:bg-indigo-600 py-3 text-xs font-semibold text-white transition-colors hover:bg-slate-800 dark:hover:bg-indigo-500 disabled:opacity-50"
                     >
-                      <span>Submit Sign Up</span>
-                      <ArrowRight className="h-4 w-4" />
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin text-white" />
+                          <span>Submitting Registration...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Submit Sign Up</span>
+                          <ArrowRight className="h-4 w-4 text-teal-400" />
+                        </>
+                      )}
                     </button>
                   </form>
                 )}
@@ -422,10 +486,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({
               /* Teacher Admin Sign In Form */
               <div className="space-y-5">
                 <div>
-                  <h2 className="font-display text-base font-bold text-[#18181B]">
+                  <h2 className="font-display text-base font-bold text-slate-900 dark:text-slate-100">
                     Teacher &amp; Administrator Login
                   </h2>
-                  <p className="text-xs text-[#71717A]">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Access live classroom controller, approvals queue, and schedules
                   </p>
                 </div>
@@ -434,23 +498,24 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   <div className="space-y-1.5">
                     <label
                       htmlFor="teacher-login-email"
-                      className="block text-xs font-semibold text-[#18181B]"
+                      className="block text-xs font-semibold text-slate-900 dark:text-slate-200"
                     >
                       Teacher Portal Email
                     </label>
                     <div className="relative">
                       <Mail
-                        className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#71717A]"
+                        className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
                         aria-hidden="true"
                       />
                       <input
                         id="teacher-login-email"
                         type="email"
                         required
+                        disabled={isSubmitting}
                         value={teacherEmail}
                         onChange={(e) => setTeacherEmail(e.target.value)}
                         placeholder="Enter teacher email"
-                        className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] py-2.5 pl-10 pr-3.5 text-sm text-[#18181B] focus:border-[#F97316] focus:bg-white focus:outline-none"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 py-2.5 pl-10 pr-3.5 text-sm text-slate-900 dark:text-slate-100 focus:border-indigo-600 focus:bg-white dark:focus:bg-slate-900 focus:outline-none disabled:opacity-50"
                       />
                     </div>
                   </div>
@@ -458,37 +523,38 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   <div className="space-y-1.5">
                     <label
                       htmlFor="teacher-login-password"
-                      className="block text-xs font-semibold text-[#18181B]"
+                      className="block text-xs font-semibold text-slate-900 dark:text-slate-200"
                     >
                       Admin Password / PIN
                     </label>
                     <div className="relative">
                       <Lock
-                        className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#71717A]"
+                        className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
                         aria-hidden="true"
                       />
                       <input
                         id="teacher-login-password"
                         type="password"
                         required
+                        disabled={isSubmitting}
                         value={teacherPassword}
                         onChange={(e) => setTeacherPassword(e.target.value)}
                         placeholder="••••••••"
-                        className="w-full rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] py-2.5 pl-10 pr-3.5 text-sm text-[#18181B] focus:border-[#F97316] focus:bg-white focus:outline-none"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 py-2.5 pl-10 pr-3.5 text-sm text-slate-900 dark:text-slate-100 focus:border-indigo-600 focus:bg-white dark:focus:bg-slate-900 focus:outline-none disabled:opacity-50"
                       />
                     </div>
                   </div>
 
                   {/* Remember Me Checkbox */}
                   <div className="flex items-center justify-between text-xs pt-0.5">
-                    <label className="flex cursor-pointer items-center gap-2 text-[#52525B]">
+                    <label className="flex cursor-pointer items-center gap-2 text-slate-600 dark:text-slate-400">
                       <input
                         type="checkbox"
                         checked={teacherRememberMe}
                         onChange={(e) => setTeacherRememberMe(e.target.checked)}
-                        className="h-3.5 w-3.5 rounded text-[#F97316] focus:ring-[#F97316]"
+                        className="h-3.5 w-3.5 rounded text-indigo-600 focus:ring-indigo-600 border-slate-300 dark:border-slate-600"
                       />
-                      <span className="select-none font-medium text-[#18181B]">
+                      <span className="select-none font-medium text-slate-800 dark:text-slate-200">
                         Remember me on this device
                       </span>
                     </label>
@@ -496,10 +562,20 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
                   <button
                     type="submit"
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#18181B] py-3 text-xs font-semibold text-white transition-colors hover:bg-[#27272A]"
+                    disabled={isSubmitting}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-900 dark:bg-indigo-600 py-3 text-xs font-semibold text-white transition-colors hover:bg-slate-800 dark:hover:bg-indigo-500 disabled:opacity-50"
                   >
-                    <span>Enter Teacher Admin Workspace</span>
-                    <ArrowRight className="h-4 w-4 text-[#F97316]" />
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin text-white" />
+                        <span>Verifying credentials...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Enter Teacher Admin Workspace</span>
+                        <ArrowRight className="h-4 w-4 text-teal-400" />
+                      </>
+                    )}
                   </button>
                 </form>
               </div>
@@ -508,7 +584,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         </div>
 
         {/* Quiet Subtitle */}
-        <p className="text-center text-[11px] text-[#A1A1AA]">
+        <p className="text-center text-[11px] text-slate-400 dark:text-slate-500">
           MathsByAbdullah · Academic Verification &amp; Secure Session
         </p>
       </div>

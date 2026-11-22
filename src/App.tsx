@@ -287,7 +287,7 @@ export default function App() {
 
     // Approved student: Full Classroom Dashboard
     return (
-      <div className="min-h-screen flex flex-col bg-[#F8F7F4] text-[#18181B]">
+      <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0B0F17] text-slate-900 dark:text-slate-100 transition-colors">
         <TopNav
           role="student"
           studentTab={studentTab}
@@ -319,17 +319,17 @@ export default function App() {
             />
           )}
 
-  {studentTab === 'photo-to-pdf' && (
-    <Suspense fallback={<div role="status" className="flex min-h-[40vh] items-center justify-center text-sm text-[#71717A]">Loading photo scanner…</div>}>
-      <PhotoToPdfScanner
-        state={state}
-        activeStudent={activeStudent}
-        onSubmitAssignment={submitAssignment}
-        onNotify={notify}
-        onNavigateTab={setStudentTab}
-      />
-    </Suspense>
-  )}
+          {studentTab === 'photo-to-pdf' && (
+            <Suspense fallback={<div role="status" className="flex min-h-[40vh] items-center justify-center text-sm text-slate-500 dark:text-slate-400">Loading photo scanner…</div>}>
+              <PhotoToPdfScanner
+                state={state}
+                activeStudent={activeStudent}
+                onSubmitAssignment={submitAssignment}
+                onNotify={notify}
+                onNavigateTab={setStudentTab}
+              />
+            </Suspense>
+          )}
 
           {studentTab === 'assignments' && (
             <StudentAssignments
@@ -344,8 +344,8 @@ export default function App() {
           )}
         </main>
 
-        <footer className="border-t border-[#E7E5E4] bg-[#F8F7F4]">
-          <div className="mx-auto flex max-w-[1240px] flex-col gap-2 px-4 py-5 text-xs text-[#71717A] sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors">
+          <div className="mx-auto flex max-w-[1240px] flex-col gap-2 px-4 py-5 text-xs text-slate-500 dark:text-slate-400 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <p>MathsByAbdullah · Mathematics Tutoring Portal</p>
             <p>Signed in as {activeStudent.name} ({activeStudent.gradeLevel})</p>
           </div>
@@ -358,7 +358,7 @@ export default function App() {
 
   // 3. If logged in as Teacher: Full Teacher Admin Workspace
   return (
-    <div className="min-h-screen flex flex-col bg-[#F8F7F4] text-[#18181B]">
+    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#0B0F17] text-slate-900 dark:text-slate-100 transition-colors">
       <TopNav
         role="teacher"
         teacherTab={teacherTab}
@@ -369,7 +369,7 @@ export default function App() {
 
       <main className="mx-auto w-full max-w-[1240px] flex-1 px-4 py-8 sm:px-6 lg:py-10">
         {loadError && (
-          <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <div role="alert" className="mb-5 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-800 dark:text-red-300">
             Supabase save/load error: {loadError}
           </div>
         )}
@@ -404,15 +404,15 @@ export default function App() {
         />
       </main>
 
-      <footer className="border-t border-[#E7E5E4] bg-[#F8F7F4]">
-        <div className="mx-auto flex max-w-[1240px] flex-col gap-2 px-4 py-5 text-xs text-[#71717A] sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors">
+        <div className="mx-auto flex max-w-[1240px] flex-col gap-2 px-4 py-5 text-xs text-slate-500 dark:text-slate-400 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <p>MathsByAbdullah · Teacher &amp; Lead Tutor Workspace</p>
           <div className="flex items-center gap-3">
             {pendingRequestsCount > 0 && (
               <button
                 type="button"
                 onClick={() => handleTeacherTabChange('students-enrollments')}
-                className="font-semibold text-[#EA580C] hover:underline"
+                className="font-semibold text-teal-600 dark:text-teal-400 hover:underline"
               >
                 {pendingRequestsCount} pending approval request(s)
               </button>

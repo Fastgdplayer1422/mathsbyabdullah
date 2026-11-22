@@ -41,18 +41,18 @@ const STATUS_BADGE: Record<
   { icon: React.ReactNode; className: string; label: string }
 > = {
   Live: {
-    icon: <Radio className="h-3.5 w-3.5 text-[#EA580C]" aria-hidden="true" />,
-    className: 'bg-[#FFF7ED] text-[#C2410C] border-[#FED7AA]',
+    icon: <Radio className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" aria-hidden="true" />,
+    className: 'bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800',
     label: 'Live',
   },
   Upcoming: {
-    icon: <Clock className="h-3.5 w-3.5 text-[#4338CA]" aria-hidden="true" />,
-    className: 'bg-[#EEF2FF] text-[#4338CA] border-[#C7D2FE]',
+    icon: <Clock className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" aria-hidden="true" />,
+    className: 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
     label: 'Upcoming',
   },
   Completed: {
-    icon: <CheckCircle2 className="h-3.5 w-3.5 text-[#0F766E]" aria-hidden="true" />,
-    className: 'bg-[#F0FDFA] text-[#0F766E] border-[#99F6E4]',
+    icon: <CheckCircle2 className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" aria-hidden="true" />,
+    className: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700',
     label: 'Completed',
   },
 };
@@ -298,13 +298,13 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
                 }
                 className="inline-flex items-center gap-1.5 rounded-full bg-[#18181B] px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#27272A] whitespace-nowrap shrink-0 self-start sm:self-auto"
               >
-                <Video className="h-3.5 w-3.5 text-[#F97316]" />
+                <Video className="h-3.5 w-3.5 text-teal-400" />
                 <span>Join Permanent Room</span>
                 <ExternalLink className="h-3 w-3 opacity-70" />
               </a>
             ) : (
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#71717A]">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#D4D4D8]" />
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
                 Permanent Room Pending
               </span>
             )}
@@ -320,25 +320,25 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
               return (
                 <div
                   key={c.id}
-                  className="rounded-xl border border-[#E7E5E4] bg-[#F8F7F4] p-3.5 space-y-2"
+                  className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 p-3.5 space-y-2"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="rounded-md bg-[#EEF2FF] px-2 py-0.5 text-[10px] font-bold text-[#4338CA] uppercase tracking-wider">
+                    <span className="rounded-md bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
                       {c.code}
                     </span>
-                    <span className="text-[11px] font-semibold text-[#52525B]">
+                    <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
                       {c.classesPerWeek || c.weeklySlots?.length || 1}{' '}
                       {c.classesPerWeek === 1 ? 'class' : 'classes'} / wk
                     </span>
                   </div>
 
                   <div>
-                    <h3 className="text-xs font-bold text-[#18181B] line-clamp-1">{c.title}</h3>
-                    <p className="text-[11px] text-[#71717A]">{c.batchName}</p>
+                    <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 line-clamp-1">{c.title}</h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">{c.batchName}</p>
                   </div>
 
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-[#18181B]">
-                    <Clock className="h-3.5 w-3.5 text-[#F97316] shrink-0" />
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100">
+                    <Clock className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
                     <span className="truncate">{formattedSchedule}</span>
                   </div>
                 </div>
@@ -425,8 +425,8 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
                     <div
                       className={`flex w-14 shrink-0 flex-col items-center justify-center rounded-xl border py-2 text-center tabular-nums ${
                         isToday
-                          ? 'border-[#F97316] bg-[#FFF7ED] text-[#C2410C]'
-                          : 'border-[#E7E5E4] bg-[#F8F7F4] text-[#18181B]'
+                          ? 'border-teal-500 bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-300'
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100'
                       }`}
                     >
                       <span className="text-[10px] font-semibold uppercase tracking-wider opacity-75">

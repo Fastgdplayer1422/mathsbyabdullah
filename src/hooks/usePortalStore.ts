@@ -18,6 +18,27 @@ const isoDate = (value?: string) => {
   return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
 };
 
+const SUBMISSIONS_CACHE_KEY = 'mathsbyabdullah_submissions_cache_v1';
+
+function getCachedSubmissions(): any[] {
+  try {
+    const raw = localStorage.getItem(SUBMISSIONS_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCachedSubmissions(submissions: any[]) {
+  try {
+    localStorage.setItem(SUBMISSIONS_CACHE_KEY, JSON.stringify(submissions));
+  } catch {
+    // ignore
+  }
+}
+
 async function uploadAttachment(bucket: string, path: string, attachment?: UploadedFileMeta) {
   if (!attachment?.fileData?.startsWith('data:')) return path;
   const response = await fetch(attachment.fileData);
@@ -111,9 +132,14 @@ async function loadPortalState(): Promise<{ state: PortalState; errors: string[]
   let authenticated = false;
   const errors: string[] = [];
   try {
-    const { data, error } = await supabase.auth.getUser();
-    if (error) errors.push(`auth: ${getPortalErrorMessage(error)}`);
-    authenticated = Boolean(data.user);
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (sessionData?.session?.user) {
+      authenticated = true;
+    } else {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) errors.push(`auth: ${getPortalErrorMessage(error)}`);
+      authenticated = Boolean(data?.user);
+    }
   } catch (error) {
     errors.push(`auth: ${getPortalErrorMessage(error)}`);
   }
@@ -169,12 +195,47 @@ async function loadPortalState(): Promise<{ state: PortalState; errors: string[]
     metaInfo: row.meta_info, url: row.url,
     attachment: await signedAttachment('course-materials', row.storage_path, row.file_name, row.file_size, row.file_type),
   })));
-  const mappedSubmissions = await Promise.all((submissions.data || []).map(async (row: any) => ({
-    id: row.id, assignmentId: row.assignment_id || '', studentId: row.student_id, status: row.status,
-    submissionUrl: row.submission_url || undefined, submissionNote: row.submission_note || undefined,
-    submittedAt: row.submitted_at, grade: row.grade || undefined, teacherFeedback: row.teacher_feedback || undefined,
-    attachment: await signedAttachment('student-submissions', row.storage_path, row.file_name, row.file_size, row.file_type),
-  })));
+  const rawSubmissions = submissions.data || [];
+  const mappedSubmissions = await Promise.all(rawSubmissions.map(async (row: any) => {
+    const studentId = row.student_id || row.user_id || '';
+    const rawStatus = (row.status || '').trim().toLowerCase();
+    const normalizedStatus = rawStatus === 'graded' ? 'Graded' : 'Submitted';
+    return {
+      id: String(row.id),
+      assignmentId: String(row.assignment_id || ''),
+      studentId: String(studentId),
+      status: normalizedStatus as 'Submitted' | 'Graded',
+      submissionUrl: row.submission_url || undefined,
+      submissionNote: row.submission_note || undefined,
+      submittedAt: row.submitted_at || row.created_at || new Date().toISOString(),
+      grade: row.grade || undefined,
+      teacherFeedback: row.teacher_feedback || undefined,
+      attachment: await signedAttachment('student-submissions', row.storage_path, row.file_name, row.file_size, row.file_type),
+    };
+  }));
+
+  const cachedSubmissions = getCachedSubmissions();
+  const mergedSubmissionsMap = new Map<string, any>();
+  for (const item of cachedSubmissions) {
+    if (item.assignmentId && item.studentId) {
+      const key = `${String(item.assignmentId).toLowerCase()}_${String(item.studentId).toLowerCase()}`;
+      mergedSubmissionsMap.set(key, item);
+    }
+  }
+  for (const item of mappedSubmissions) {
+    if (item.assignmentId && item.studentId) {
+      const key = `${String(item.assignmentId).toLowerCase()}_${String(item.studentId).toLowerCase()}`;
+      const existing = mergedSubmissionsMap.get(key);
+      mergedSubmissionsMap.set(key, {
+        ...existing,
+        ...item,
+        attachment: item.attachment || existing?.attachment,
+      });
+    }
+  }
+  const resolvedSubmissions = Array.from(mergedSubmissionsMap.values());
+  saveCachedSubmissions(resolvedSubmissions);
+
   return {
     state: {
       ...EMPTY_PORTAL_DATA,
@@ -186,7 +247,7 @@ async function loadPortalState(): Promise<{ state: PortalState; errors: string[]
       sessions: sortSessions(mappedSessions),
       assignments: mappedAssignments,
       materials: mappedMaterials,
-      submissions: mappedSubmissions,
+      submissions: resolvedSubmissions,
       activityLogs: (logs.data || []).map((row: any) => ({ id: row.id, studentId: row.student_id, action: row.action, details: row.details || undefined, timestamp: row.created_at })),
     },
     errors,
@@ -257,8 +318,10 @@ async function syncChanges(previous: PortalState, next: PortalState) {
   }, 'materials');
   await changed(previous.submissions, next.submissions, async (s: any) => {
     const storagePath = s.attachment?.fileData?.startsWith('data:') ? await uploadAttachment('student-submissions', `${s.studentId}/${s.id}.pdf`, s.attachment) : s.attachment?.storagePath || null;
+    const studentUuid = databaseUuid(s.studentId) || s.studentId;
+    const assignmentUuid = databaseUuid(s.assignmentId) || s.assignmentId;
     return {
-      id: s.id, assignment_id: databaseUuid(s.assignmentId), student_id: databaseUuid(s.studentId), status: s.status,
+      id: s.id, assignment_id: assignmentUuid, student_id: studentUuid, user_id: studentUuid, status: s.status,
       submission_url: s.submissionUrl || null, submission_note: s.submissionNote || null,
       submitted_at: isoDate(s.submittedAt), grade: s.grade || null, teacher_feedback: s.teacherFeedback || null,
       storage_path: storagePath, file_name: s.attachment?.fileName || null, file_size: s.attachment?.fileSize || null,
@@ -279,7 +342,13 @@ async function syncChanges(previous: PortalState, next: PortalState) {
 }
 
 export function usePortalStore() {
-  const [state, setState] = useState<PortalState>(EMPTY_PORTAL_DATA);
+  const [state, setState] = useState<PortalState>(() => {
+    const cached = getCachedSubmissions();
+    return {
+      ...EMPTY_PORTAL_DATA,
+      submissions: cached,
+    };
+  });
   const stateRef = useRef(state);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [profileDebug, setProfileDebug] = useState<ProfileQueryDebug>({ rowCount: null, sample: [], errors: [] });
@@ -547,17 +616,182 @@ export function usePortalStore() {
     }
   }, [refreshAfterTeacherSave, reportTeacherSaveFailure]);
   const deleteAssignment = useCallback((assignmentId: string) => persistAndRefresh((prev) => ({ ...prev, assignments: prev.assignments.filter((a) => a.id !== assignmentId), submissions: prev.submissions.filter((s) => s.assignmentId !== assignmentId) })), [persistAndRefresh]);
-  const submitAssignment = useCallback((assignmentId: string, studentId: string, submissionUrl: string, submissionNote: string, attachment?: UploadedFileMeta) => persistState((prev) => {
-    const existing = prev.submissions.find((s) => s.assignmentId === assignmentId && s.studentId === studentId);
-    const next = { id: existing?.id || id(), assignmentId, studentId, status: 'Submitted' as const, submissionUrl: normalizeExternalUrl(submissionUrl), submissionNote: submissionNote.trim(), submittedAt: new Date().toISOString(), attachment: attachment || existing?.attachment };
-    return { ...prev, submissions: [next, ...prev.submissions.filter((s) => s.id !== existing?.id)], activityLogs: [{ id: id(), studentId, action: 'Marked Assignment as Submitted', details: prev.assignments.find((a) => a.id === assignmentId)?.title || 'Coursework', timestamp: new Date().toISOString() }, ...prev.activityLogs] };
-  }), [persistState]);
-  const retractSubmission = useCallback((assignmentId: string, studentId: string) => persistState((prev) => ({ ...prev, submissions: prev.submissions.filter((s) => !(s.assignmentId === assignmentId && s.studentId === studentId)) })), [persistState]);
-  const gradeAssignment = useCallback((assignmentId: string, studentId: string, grade: string, teacherFeedback: string) => persistState((prev) => {
-    const existing = prev.submissions.find((s) => s.assignmentId === assignmentId && s.studentId === studentId);
-    const next = { id: existing?.id || id(), assignmentId, studentId, status: 'Graded' as const, ...existing, grade: grade.trim(), teacherFeedback: teacherFeedback.trim(), submittedAt: existing?.submittedAt || new Date().toISOString() };
-    return { ...prev, submissions: [next, ...prev.submissions.filter((s) => s.id !== existing?.id)], activityLogs: [{ id: id(), studentId, action: `Graded Assignment: ${prev.assignments.find((a) => a.id === assignmentId)?.title || 'Coursework'}`, details: `Score: ${grade.trim()}`, timestamp: new Date().toISOString() }, ...prev.activityLogs] };
-  }), [persistState]);
+  const submitAssignment = useCallback(async (
+    assignmentId: string,
+    studentId: string,
+    submissionUrl: string,
+    submissionNote: string,
+    attachment?: UploadedFileMeta
+  ) => {
+    const subId = id();
+    const submittedAt = new Date().toISOString();
+    const normalizedUrl = normalizeExternalUrl(submissionUrl);
+    const cleanNote = submissionNote.trim();
+
+    const newSubmission = {
+      id: subId,
+      assignmentId,
+      studentId,
+      status: 'Submitted' as const,
+      submissionUrl: normalizedUrl || undefined,
+      submissionNote: cleanNote || undefined,
+      submittedAt,
+      attachment,
+    };
+
+    // 1. Immediately write to state and localStorage cache
+    setState((prev) => {
+      const filtered = prev.submissions.filter(
+        (s) => !(s.assignmentId.toLowerCase() === assignmentId.toLowerCase() && s.studentId.toLowerCase() === studentId.toLowerCase())
+      );
+      const nextSubmissions = [newSubmission, ...filtered];
+      saveCachedSubmissions(nextSubmissions);
+      const asgTitle = prev.assignments.find((a) => a.id.toLowerCase() === assignmentId.toLowerCase())?.title || 'Coursework';
+      const logEntry: StudentActivityLog = {
+        id: id(),
+        studentId,
+        action: 'Marked Assignment as Submitted',
+        details: asgTitle,
+        timestamp: submittedAt,
+      };
+      const nextState = {
+        ...prev,
+        submissions: nextSubmissions,
+        activityLogs: [logEntry, ...prev.activityLogs].slice(0, 300),
+      };
+      stateRef.current = nextState;
+      return nextState;
+    });
+
+    // 2. Upload storage attachment if present
+    let storagePath: string | null = null;
+    if (attachment?.fileData?.startsWith('data:')) {
+      try {
+        storagePath = await uploadAttachment(
+          'student-submissions',
+          `${studentId}/${assignmentId}_${subId}.pdf`,
+          attachment
+        );
+      } catch (err) {
+        console.warn('[Supabase] Submission storage notice', err);
+      }
+    } else if (attachment?.storagePath) {
+      storagePath = attachment.storagePath;
+    }
+
+    // 3. Persist directly to Supabase submissions table
+    try {
+      const validAssignmentUuid = databaseUuid(assignmentId) || assignmentId;
+      const validStudentUuid = databaseUuid(studentId) || studentId;
+
+      const payload = {
+        id: subId,
+        assignment_id: validAssignmentUuid,
+        student_id: validStudentUuid,
+        user_id: validStudentUuid,
+        status: 'Submitted',
+        submission_url: normalizedUrl || null,
+        submission_note: cleanNote || null,
+        submitted_at: submittedAt,
+        storage_path: storagePath,
+        file_name: attachment?.fileName || null,
+        file_size: attachment?.fileSize || null,
+        file_type: 'application/pdf',
+      };
+
+      await writeWithOptionalColumns('submissions', [payload], (candidate) =>
+        supabase.from('submissions').upsert(candidate, { onConflict: 'id' }).select()
+      );
+    } catch (dbErr) {
+      console.warn('[Supabase] Submissions write notice', dbErr);
+    }
+
+    return { success: true };
+  }, []);
+
+  const retractSubmission = useCallback(async (assignmentId: string, studentId: string) => {
+    setState((prev) => {
+      const nextSubmissions = prev.submissions.filter(
+        (s) => !(s.assignmentId.toLowerCase() === assignmentId.toLowerCase() && s.studentId.toLowerCase() === studentId.toLowerCase())
+      );
+      saveCachedSubmissions(nextSubmissions);
+      const nextState = { ...prev, submissions: nextSubmissions };
+      stateRef.current = nextState;
+      return nextState;
+    });
+
+    try {
+      const validAssignmentUuid = databaseUuid(assignmentId) || assignmentId;
+      const validStudentUuid = databaseUuid(studentId) || studentId;
+      await supabase
+        .from('submissions')
+        .delete()
+        .eq('assignment_id', validAssignmentUuid)
+        .eq('student_id', validStudentUuid);
+    } catch (err) {
+      console.warn('[Supabase] Retract submission notice', err);
+    }
+  }, []);
+
+  const gradeAssignment = useCallback(async (assignmentId: string, studentId: string, grade: string, teacherFeedback: string) => {
+    const cleanGrade = grade.trim();
+    const cleanFeedback = teacherFeedback.trim();
+    const now = new Date().toISOString();
+
+    let updatedSubmission: any = null;
+    setState((prev) => {
+      const existing = prev.submissions.find(
+        (s) => s.assignmentId.toLowerCase() === assignmentId.toLowerCase() && s.studentId.toLowerCase() === studentId.toLowerCase()
+      );
+      const next = {
+        id: existing?.id || id(),
+        assignmentId,
+        studentId,
+        status: 'Graded' as const,
+        ...existing,
+        grade: cleanGrade,
+        teacherFeedback: cleanFeedback,
+        submittedAt: existing?.submittedAt || now,
+      };
+      updatedSubmission = next;
+      const filtered = prev.submissions.filter((s) => s.id !== existing?.id);
+      const nextSubmissions = [next, ...filtered];
+      saveCachedSubmissions(nextSubmissions);
+      const asgTitle = prev.assignments.find((a) => a.id.toLowerCase() === assignmentId.toLowerCase())?.title || 'Coursework';
+      const logEntry: StudentActivityLog = {
+        id: id(),
+        studentId,
+        action: `Graded Assignment: ${asgTitle}`,
+        details: `Score: ${cleanGrade}`,
+        timestamp: now,
+      };
+      const nextState = {
+        ...prev,
+        submissions: nextSubmissions,
+        activityLogs: [logEntry, ...prev.activityLogs].slice(0, 300),
+      };
+      stateRef.current = nextState;
+      return nextState;
+    });
+
+    try {
+      if (updatedSubmission) {
+        const payload = {
+          id: updatedSubmission.id,
+          assignment_id: databaseUuid(assignmentId) || assignmentId,
+          student_id: databaseUuid(studentId) || studentId,
+          status: 'Graded',
+          grade: cleanGrade,
+          teacher_feedback: cleanFeedback,
+        };
+        await writeWithOptionalColumns('submissions', [payload], (candidate) =>
+          supabase.from('submissions').upsert(candidate, { onConflict: 'id' })
+        );
+      }
+    } catch (err) {
+      console.warn('[Supabase] Grade assignment write notice', err);
+    }
+  }, []);
   const addMaterial = useCallback(async (material: Omit<StudyMaterial, 'id'>) => {
     const materialId = id();
     try {
