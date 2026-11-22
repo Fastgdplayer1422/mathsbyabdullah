@@ -503,7 +503,7 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
                         }
                         className={`inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
                           session.status === 'Live'
-                            ? 'bg-[#F97316] text-[#18181B] hover:bg-[#EA580C] hover:text-white'
+                            ? 'bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400'
                             : 'bg-[#18181B] text-white hover:bg-[#27272A]'
                         }`}
                       >
@@ -570,7 +570,7 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
                 <div
                   key={day.iso}
                   className={`flex min-h-[190px] flex-col rounded-2xl border bg-[#FFFFFF] p-3.5 ${
-                    day.isToday ? 'border-[#F97316]' : 'border-[#E7E5E4]'
+                    day.isToday ? 'border-indigo-600 dark:border-indigo-400' : 'border-[#E7E5E4]'
                   }`}
                 >
                   <div className="flex items-center justify-between border-b border-[#F4F4F5] pb-2.5">
@@ -578,7 +578,7 @@ export const StudentSchedule: React.FC<StudentScheduleProps> = ({
                     <span
                       className={`font-display text-sm font-bold tabular-nums ${
                         day.isToday
-                          ? 'rounded-md bg-[#F97316] px-2 py-0.5 text-[#18181B]'
+                          ? 'rounded-md bg-indigo-600 px-2 py-0.5 text-white dark:bg-indigo-500'
                           : 'text-[#18181B]'
                       }`}
                     >

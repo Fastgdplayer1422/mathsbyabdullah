@@ -22,6 +22,7 @@
     font-family: var(--font-sans);
     background-color: #F8FAFC;
     color: #0F172A;
+    transition: background-color 220ms ease, color 220ms ease;
   }
 
   .dark body {

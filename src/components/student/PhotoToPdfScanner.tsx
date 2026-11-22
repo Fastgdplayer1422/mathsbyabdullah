@@ -370,7 +370,7 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
               {isGenerating ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Download className="h-3.5 w-3.5 text-[#F97316]" />
+                <Download className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
               )}
               <span>Download PDF</span>
             </button>
@@ -405,7 +405,7 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
         {/* Camera Snap Picker */}
         <div
           onClick={() => cameraInputRef.current?.click()}
-          className="group cursor-pointer rounded-2xl border-2 border-dashed border-[#FED7AA] bg-[#FFF7ED]/50 p-6 text-center transition-colors hover:border-[#EA580C] hover:bg-[#FFF7ED]"
+          className="group cursor-pointer rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-6 text-center transition-colors hover:border-indigo-400 hover:bg-indigo-50 dark:hover:border-indigo-600 dark:hover:bg-indigo-950/50"
         >
           <input
             ref={cameraInputRef}
@@ -415,7 +415,7 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
             onChange={handleFilesSelected}
             className="hidden"
           />
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FFF7ED] text-[#EA580C] group-hover:scale-105 transition-transform">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 group-hover:scale-105 transition-transform">
             <Camera className="h-6 w-6" />
           </div>
           <h2 className="mt-3 text-sm font-bold text-[#18181B]">Snap with Phone / Tablet Camera</h2>
@@ -615,7 +615,7 @@ export const PhotoToPdfScanner: React.FC<PhotoToPdfScannerProps> = ({
                 {isGenerating ? (
                   <Loader2 className="h-4 w-4 animate-spin text-[#4338CA]" />
                 ) : (
-                  <Download className="h-4 w-4 text-[#F97316]" />
+                  <Download className="h-4 w-4 text-teal-600 dark:text-teal-400" />
                 )}
                 <span>Download PDF to Device</span>
               </button>

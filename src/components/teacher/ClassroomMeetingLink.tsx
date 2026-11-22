@@ -83,12 +83,12 @@ export const ClassroomMeetingLink: React.FC<ClassroomMeetingLinkProps> = ({
             className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${
               isConfigured
                 ? 'border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-300'
-                : 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300'
+                : 'border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300'
             }`}
           >
             <span
               className={`h-2 w-2 rounded-full ${
-                isConfigured ? 'bg-teal-500 animate-pulse' : 'bg-amber-400'
+                isConfigured ? 'bg-teal-500 animate-pulse' : 'bg-indigo-400'
               }`}
             />
             <span>{isConfigured ? 'Permanent Room Active' : 'No Link Configured'}</span>
@@ -140,7 +140,7 @@ export const ClassroomMeetingLink: React.FC<ClassroomMeetingLinkProps> = ({
                   </>
                 ) : justSaved ? (
                   <>
-                    <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                    <CheckCircle2 className="h-4 w-4 text-teal-400" />
                     <span>Saved!</span>
                   </>
                 ) : (

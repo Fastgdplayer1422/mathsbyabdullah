@@ -15,7 +15,7 @@ export const ToastBanner: React.FC<ToastBannerProps> = ({ message, onDismiss }) 
       aria-live="polite"
       className="fixed bottom-5 right-5 z-50 flex max-w-sm items-center gap-3 rounded-xl border border-[#E7E5E4] bg-[#18181B] px-4 py-3 text-sm font-medium text-white shadow-lg"
     >
-      <CheckCircle2 className="h-4 w-4 shrink-0 text-[#F97316]" />
+      <CheckCircle2 className="h-4 w-4 shrink-0 text-teal-400" />
       <span className="leading-snug">{message}</span>
       <button
         type="button"
