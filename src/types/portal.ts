@@ -54,6 +54,10 @@ export interface StudentSubmission {
   teacherFeedback?: string;
   attachment?: UploadedFileMeta;
   reviewAttachment?: UploadedFileMeta;
+  fileUrl?: string;
+  fileName?: string;
+  gradedFileUrl?: string;
+  gradedFileName?: string;
 }
 
 export type DayOfWeek =
@@ -119,6 +123,8 @@ export interface Assignment {
   resourceUrl: string;
   resourceLabel?: string;
   attachment?: UploadedFileMeta;
+  fileUrl?: string;
+  fileName?: string;
 }
 
 export interface StudyMaterial {
@@ -130,6 +136,8 @@ export interface StudyMaterial {
   metaInfo: string;
   url: string;
   attachment?: UploadedFileMeta;
+  fileUrl?: string;
+  fileName?: string;
 }
 
 export interface TeacherAccount {

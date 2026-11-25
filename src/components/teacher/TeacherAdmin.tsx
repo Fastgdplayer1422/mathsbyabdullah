@@ -38,7 +38,7 @@ interface TeacherAdminProps {
   onUpdateCourse: (id: string, updates: Partial<Omit<Course, 'id'>>) => Promise<boolean>;
   onDeleteCourse: (id: string) => void;
   onApproveStudent: (studentId: string, courseIds: string[]) => void;
-  onRejectStudent: (studentId: string) => void;
+  onRejectStudent: (studentId: string) => Promise<{ success: boolean; error?: string }> | void;
   onChangeStudentStatus: (studentId: string, status: StudentStatus) => void;
   onAddStudent: (student: Omit<Student, 'id' | 'createdAt'>, initialPassword: string) => Promise<Student>;
   onUpdateStudent: (id: string, updates: Partial<Omit<Student, 'id' | 'createdAt'>>) => void;
@@ -60,7 +60,7 @@ interface TeacherAdminProps {
   onAddMaterial: (material: Omit<StudyMaterial, 'id'>) => Promise<boolean>;
   onDeleteMaterial: (id: string) => void;
   onResetAllData: () => void;
-  onNotify: (msg: string) => void;
+  onNotify: (msg: string, type?: 'success' | 'error') => void;
 }
 
 export const TeacherAdmin: React.FC<TeacherAdminProps> = ({

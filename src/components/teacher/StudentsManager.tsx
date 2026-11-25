@@ -33,12 +33,13 @@ import { downloadDataUrl, formatFileSize, readFileAsDataUrl } from '../../utils/
 import { formatReadableDate, validateStudentEmail } from '../../utils/formatters';
 import { UploadedFileMeta } from '../../types/portal';
 import { PdfPreviewDialog } from '../PdfPreviewDialog';
+import { supabase } from '../../lib/supabase';
 
 interface StudentsManagerProps {
   state: PortalState;
   profileDebug: ProfileQueryDebug;
   onApproveStudent: (studentId: string, courseIds: string[]) => void;
-  onRejectStudent: (studentId: string) => void;
+  onRejectStudent: (studentId: string) => Promise<{ success: boolean; error?: string }> | void;
   onChangeStudentStatus: (studentId: string, status: StudentStatus) => void;
   onAddStudent: (student: Omit<Student, 'id' | 'createdAt'>, initialPassword: string) => Promise<Student>;
   onUpdateStudent: (id: string, updates: Partial<Omit<Student, 'id' | 'createdAt'>>) => void;
@@ -51,7 +52,7 @@ interface StudentsManagerProps {
     feedback: string,
     reviewAttachment?: UploadedFileMeta
   ) => Promise<boolean>;
-  onNotify: (msg: string) => void;
+  onNotify: (msg: string, type?: 'success' | 'error') => void;
 }
 
 export const StudentsManager: React.FC<StudentsManagerProps> = ({
@@ -95,6 +96,45 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
   const [reviewAttachment, setReviewAttachment] = useState<UploadedFileMeta | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<UploadedFileMeta | null>(null);
   const [savingGrade, setSavingGrade] = useState(false);
+  const [decliningId, setDecliningId] = useState<string | null>(null);
+  const [declineErrors, setDeclineErrors] = useState<Record<string, string>>({});
+
+  const handleDecline = async (student: Student) => {
+    setDecliningId(student.id);
+    setDeclineErrors((prev) => {
+      const next = { ...prev };
+      delete next[student.id];
+      return next;
+    });
+
+    try {
+      const { data, error } = await supabase.rpc('decline_and_delete_user', {
+        target_user_id: student.id,
+      });
+
+      const errorMessage = error?.message
+        || (data && typeof data === 'object' && ('error' in data) ? String((data as any).error) : null)
+        || (data && typeof data === 'object' && ('success' in data) && !(data as any).success ? String((data as any).message || 'Decline operation failed.') : null)
+        || (data === false ? 'Unable to decline and remove student.' : null);
+
+      if (errorMessage) {
+        console.error('[Supabase RPC] decline_and_delete_user error:', error || data);
+        setDeclineErrors((prev) => ({ ...prev, [student.id]: errorMessage }));
+        onNotify(`Failed to decline ${student.name}: ${errorMessage}`, 'error');
+        return;
+      }
+
+      onDeleteStudent(student.id);
+      onNotify('Registration declined and user removed.', 'success');
+    } catch (err: any) {
+      const msg = err?.message || 'Unexpected error while declining student registration.';
+      console.error('[Supabase RPC] decline_and_delete_user exception:', err);
+      setDeclineErrors((prev) => ({ ...prev, [student.id]: msg }));
+      onNotify(`Failed to decline ${student.name}: ${msg}`, 'error');
+    } finally {
+      setDecliningId(null);
+    }
+  };
 
   const courseLookup = useMemo(() => {
     const map: Record<string, Course> = {};
@@ -363,6 +403,13 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
                       <strong className="font-semibold text-indigo-700 dark:text-indigo-300">Student Note:</strong> &ldquo;{student.requestNote}&rdquo;
                     </div>
                   )}
+
+                  {declineErrors[student.id] && (
+                    <div role="alert" className="rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 p-2.5 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
+                      <span>{declineErrors[student.id]}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">
@@ -377,14 +424,16 @@ export const StudentsManager: React.FC<StudentsManagerProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => {
-                      onRejectStudent(student.id);
-                      onNotify(`Declined registration for ${student.name}`);
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 hover:border-red-300 transition-colors whitespace-nowrap shrink-0"
+                    disabled={decliningId === student.id}
+                    onClick={() => void handleDecline(student)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-white dark:bg-slate-900 dark:border-red-900/60 px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 hover:border-red-300 transition-colors whitespace-nowrap shrink-0 disabled:opacity-50 disabled:cursor-wait"
                   >
-                    <UserX className="h-3.5 w-3.5" />
-                    <span>Decline</span>
+                    {decliningId === student.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <UserX className="h-3.5 w-3.5" />
+                    )}
+                    <span>{decliningId === student.id ? 'Declining...' : 'Decline'}</span>
                   </button>
                 </div>
               </article>

@@ -47,6 +47,18 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     initialMode === 'student-signup' ? 'signup' : 'signin'
   );
 
+  React.useEffect(() => {
+    if (initialMode === 'student-signup') {
+      setAuthRole('student');
+      setStudentMode('signup');
+    } else if (initialMode === 'student-signin') {
+      setAuthRole('student');
+      setStudentMode('signin');
+    } else if (initialMode === 'teacher') {
+      setAuthRole('teacher');
+    }
+  }, [initialMode]);
+
   // Remember me states
   const [studentRememberMe, setStudentRememberMe] = useState(true);
   const [teacherRememberMe, setTeacherRememberMe] = useState(true);
@@ -80,7 +92,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     setIsSubmitting(true);
     try {
       const result = await onStudentLogin(studentEmail.trim().toLowerCase(), studentPassword, studentRememberMe);
-      if (result.error) setErrorMessage(result.error);
+      if (result.error) {
+        setErrorMessage(result.error);
+        if (
+          result.error.toLowerCase().includes('no student profile') ||
+          result.error.toLowerCase().includes('complete your registration')
+        ) {
+          setRegEmail(studentEmail.trim().toLowerCase());
+          setRegPassword(studentPassword);
+          setStudentMode('signup');
+        }
+      }
     } catch {
       setErrorMessage('Unable to sign in right now. Please try again.');
     } finally {

@@ -6,10 +6,16 @@ type WriteBuilder = (payload: WritePayload) => PromiseLike<WriteResult>;
 const optionalColumns: Record<string, ReadonlySet<string>> = {
   profiles: new Set(['full_name', 'email', 'grade_level', 'notes', 'request_note', 'created_at']),
   courses: new Set(['description', 'schedule_cadence', 'classes_per_week', 'weekly_slots']),
-  materials: new Set(['meta_info', 'url', 'storage_path', 'file_name', 'file_size', 'file_type']),
-  submissions: new Set(['student_id', 'user_id', 'assignment_id', 'status', 'submission_url', 'submission_note', 'submitted_at', 'grade', 'teacher_feedback', 'storage_path', 'file_name', 'file_size', 'file_type', 'attachment', 'created_at', 'updated_at']),
+  materials: new Set(['meta_info', 'url', 'storage_path', 'file_name', 'file_size', 'file_type', 'file_url']),
+  submissions: new Set([
+    'student_id', 'user_id', 'assignment_id', 'status', 'submission_url', 'submission_note',
+    'submitted_at', 'grade', 'teacher_feedback', 'storage_path', 'file_name', 'file_size',
+    'file_type', 'attachment', 'created_at', 'updated_at', 'file_url', 'pdf_url',
+    'graded_file_url', 'graded_file_name', 'graded_at', 'graded_by',
+    'review_storage_path', 'review_file_name', 'review_file_size', 'review_file_type'
+  ]),
   class_sessions: new Set(['meeting_url']),
-  assignments: new Set(['description', 'resource_url', 'resource_label', 'attachment_path', 'attachment_name', 'attachment_size', 'attachment_type']),
+  assignments: new Set(['description', 'resource_url', 'resource_label', 'attachment_path', 'attachment_name', 'attachment_size', 'attachment_type', 'file_url', 'file_name']),
   activity_logs: new Set(['details', 'created_at']),
   app_settings: new Set(['live_hero', 'updated_at']),
 };

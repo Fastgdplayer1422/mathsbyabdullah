@@ -12,7 +12,7 @@ import { StudentDashboard } from './components/student/StudentDashboard';
 import { StudentSchedule } from './components/student/StudentSchedule';
 import { TeacherAdmin } from './components/teacher/TeacherAdmin';
 import { usePortalStore } from './hooks/usePortalStore';
-import { StudentTab, TeacherTab, UserSession } from './types/portal';
+import { Student, StudentStatus, StudentTab, TeacherTab, UserSession } from './types/portal';
 import { supabase } from './lib/supabase';
 import { selectWithOptionalColumns } from './lib/supabase-schema';
 
@@ -52,6 +52,7 @@ export default function App() {
   } = usePortalStore();
 
   const [session, setSession] = useState<UserSession>(null);
+  const [sessionStudentFallback, setSessionStudentFallback] = useState<Student | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
   const [authMode, setAuthMode] = useState<'landing' | 'student-signin' | 'student-signup' | 'teacher'>('landing');
@@ -59,9 +60,11 @@ export default function App() {
   const [teacherTab, setTeacherTab] = useState<TeacherTab>('live-controller');
   const [scheduleCourseFilter, setScheduleCourseFilter] = useState<string>('all');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastType, setToastType] = useState<'success' | 'error'>('success');
 
-  const notify = useCallback((message: string) => {
+  const notify = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setToastMessage(message);
+    setToastType(type);
   }, []);
 
   const handleTeacherTabChange = useCallback((tab: TeacherTab) => {
@@ -80,22 +83,56 @@ export default function App() {
   }, [toastMessage]);
 
   const loadAuthenticatedRole = useCallback(async (userId: string, email?: string | null) => {
-    if (email?.trim().toLowerCase() === 'aa6993248@gmail.com') {
+    const userEmail = email?.trim().toLowerCase();
+    if (userEmail === 'aa6993248@gmail.com') {
       setSession({ role: 'teacher' });
       return;
     }
 
-    const { data: profile, error } = await selectWithOptionalColumns(
+    const { data: profile } = await selectWithOptionalColumns(
       'profiles',
-      'id,role,status,full_name',
+      'id,role,status,full_name,email,grade_level,notes,request_note,created_at',
       (projection) => supabase.from('profiles').select(projection).eq('id', userId).maybeSingle(),
     );
-    if (error || !profile) {
-      setSession(null);
+
+    const isTeacher = userEmail === 'aa6993248@gmail.com' || profile?.role?.trim().toLowerCase() === 'teacher';
+    if (isTeacher) {
+      setSession({ role: 'teacher' });
       return;
     }
-    setSession(profile.role?.trim().toLowerCase() === 'teacher' ? { role: 'teacher' } : { role: 'student', studentId: profile.id });
-  }, [notify]);
+
+    // If no profile row exists for that user in public.profiles:
+    // Let them complete registration normally without showing "waiting for approval"
+    if (!profile) {
+      setSession(null);
+      setSessionStudentFallback(null);
+      setAuthMode('student-signup');
+      return;
+    }
+
+    const studentStatus = (profile.status || '').trim().toLowerCase();
+    // Treat accounts without a teacher role as valid student accounts unless rejected
+    if (studentStatus === 'rejected') {
+      await supabase.auth.signOut();
+      setSession(null);
+      setSessionStudentFallback(null);
+      return;
+    }
+
+    const studentId = profile.id || userId;
+    setSessionStudentFallback({
+      id: studentId,
+      name: profile.full_name || (userEmail ? userEmail.split('@')[0] : 'Student'),
+      email: profile.email || userEmail || '',
+      status: (studentStatus === 'approved' ? 'approved' : 'pending') as StudentStatus,
+      gradeLevel: profile.grade_level || '',
+      notes: profile.notes,
+      requestNote: profile.request_note,
+      enrolledCourseIds: [],
+      createdAt: profile.created_at || new Date().toISOString(),
+    });
+    setSession({ role: 'student', studentId });
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -104,6 +141,7 @@ export default function App() {
       if (!active) return;
       if (error || !data.session) {
         setSession(null);
+        setSessionStudentFallback(null);
         setAuthLoading(false);
         return;
       }
@@ -114,7 +152,7 @@ export default function App() {
       window.setTimeout(() => {
         if (!active) return;
         if (authSession) void loadAuthenticatedRole(authSession.user.id, authSession.user.email).finally(() => setAuthLoading(false));
-        else { setSession(null); setAuthLoading(false); }
+        else { setSession(null); setSessionStudentFallback(null); setAuthLoading(false); }
       }, 0);
     });
     void restore();
@@ -125,6 +163,7 @@ export default function App() {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
     setSession(null);
+    setSessionStudentFallback(null);
     notify('Signed out of MathsByAbdullah');
   }, [notify]);
 
@@ -148,40 +187,72 @@ export default function App() {
     }
 
     const userEmail = data.user.email?.trim().toLowerCase();
-    if (expectedRole === 'teacher' && userEmail === 'aa6993248@gmail.com') {
-      setSession({ role: 'teacher' });
-      setAuthLoading(false);
-      notify('Welcome Abdullah. Teacher Admin active.');
-      return {};
-    }
-
-    const { data: profile, error: profileError } = await selectWithOptionalColumns(
+    const { data: profile } = await selectWithOptionalColumns(
       'profiles',
-      'id,role,status,full_name,email',
+      'id,role,status,full_name,email,grade_level,notes,request_note,created_at',
       (projection) => supabase.from('profiles').select(projection).eq('id', data.user.id).maybeSingle(),
     );
-    if (profileError) {
-      if (import.meta.env.DEV) {
-        console.error('[auth] Profile lookup failed', { code: profileError.code });
+
+    const isTeacher = userEmail === 'aa6993248@gmail.com' || profile?.role?.trim().toLowerCase() === 'teacher';
+
+    if (expectedRole === 'teacher') {
+      if (isTeacher) {
+        setSession({ role: 'teacher' });
+        setAuthLoading(false);
+        notify('Welcome Abdullah. Teacher Admin active.');
+        return {};
       }
-      return { error: 'Your password was accepted, but we could not load your portal profile. Please try again.' };
-    }
-    if (!profile || profile.role?.trim().toLowerCase() !== expectedRole) {
       await supabase.auth.signOut();
       return { error: 'This account is not configured for the selected portal. Please choose the correct sign-in option or contact your teacher.' };
     }
-    setSession(expectedRole === 'teacher' ? { role: 'teacher' } : { role: 'student', studentId: profile.id });
+
+    // Expected role is student:
+    if (isTeacher) {
+      await supabase.auth.signOut();
+      return { error: 'This account is configured for the Teacher Admin portal. Please choose Teacher Portal sign-in.' };
+    }
+
+    // If no profile row exists for that user in public.profiles:
+    // Let them complete registration normally without showing "waiting for approval"
+    if (!profile) {
+      setSession(null);
+      setSessionStudentFallback(null);
+      setAuthMode('student-signup');
+      setAuthLoading(false);
+      return {
+        error: 'No student profile was found for this account. Please complete your registration below.',
+      };
+    }
+
+    const studentStatus = (profile.status || '').trim().toLowerCase();
+    if (studentStatus === 'rejected') {
+      await supabase.auth.signOut();
+      return { error: 'Your registration request could not be approved for current tutoring cohorts at this time. Please contact Abdullah (Lead Tutor) directly.' };
+    }
+
+    const studentId = profile.id || data.user.id;
+    const studentRecord: Student = {
+      id: studentId,
+      name: profile.full_name || data.user.user_metadata?.full_name || (userEmail ? userEmail.split('@')[0] : 'Student'),
+      email: profile.email || userEmail || '',
+      status: (studentStatus === 'approved' ? 'approved' : 'pending') as StudentStatus,
+      gradeLevel: profile.grade_level || data.user.user_metadata?.grade_level || '',
+      notes: profile.notes,
+      requestNote: profile.request_note || data.user.user_metadata?.request_note,
+      enrolledCourseIds: [],
+      createdAt: profile.created_at || new Date().toISOString(),
+    };
+    setSessionStudentFallback(studentRecord);
+
+    setSession({ role: 'student', studentId });
     setAuthLoading(false);
-    if (expectedRole === 'student') {
-      if (profile.status?.trim().toLowerCase() === 'approved') {
-        logActivity(profile.id, 'Logged In', 'Student session started');
-        const displayName = profile.full_name || profile.email || 'student';
-        notify(`Welcome back, ${displayName.split(' ')[0]}!`);
-      } else {
-        notify('Your account is awaiting teacher approval.');
-      }
-    } else {
-      notify('Welcome Abdullah. Teacher Admin active.');
+
+    if (studentStatus === 'approved') {
+      logActivity(studentId, 'Logged In', 'Student session started');
+      const displayName = studentRecord.name;
+      notify(`Welcome back, ${displayName.split(' ')[0]}!`);
+    } else if (studentStatus === 'pending') {
+      notify('Your account is awaiting teacher approval.');
     }
     return {};
   }, [logActivity, notify]);
@@ -192,8 +263,15 @@ export default function App() {
   // Current logged in student
   const activeStudent = useMemo(() => {
     if (!session || session.role !== 'student') return null;
-    return state.students.find((s) => s.id === session.studentId) || null;
-  }, [session, state.students]);
+    const found = state.students.find(
+      (s) => s.id.toLowerCase() === session.studentId.toLowerCase()
+    );
+    if (found) return found;
+    if (sessionStudentFallback && sessionStudentFallback.id.toLowerCase() === session.studentId.toLowerCase()) {
+      return sessionStudentFallback;
+    }
+    return null;
+  }, [session, state.students, sessionStudentFallback]);
 
   // Pending approval requests counter for teacher top bar
   const pendingRequestsCount = useMemo(() => {
@@ -261,33 +339,36 @@ export default function App() {
             onTeacherLogin={handleTeacherLogin}
           />
         )}
-        <ToastBanner message={toastMessage} onDismiss={() => setToastMessage(null)} />
+        <ToastBanner message={toastMessage} type={toastType} onDismiss={() => setToastMessage(null)} />
       </>
     );
   }
 
   // 2. If logged in as student
   if (session.role === 'student') {
-    // If student record was deleted by teacher in another tab
+    // If student record was deleted by teacher in another tab or profile does not exist
     if (!activeStudent) {
       return (
         <>
           <AuthPage
             state={state}
+            initialMode="student-signup"
+            onBackToLanding={() => setAuthMode('landing')}
             onStudentLogin={handleStudentLogin}
             onStudentRegister={registerStudent}
             onTeacherLogin={handleTeacherLogin}
           />
           <ToastBanner
-            message="Your account session expired or was removed. Please log in again."
+            message="No registration profile was found for this account. Please complete your registration below."
+            type="error"
             onDismiss={() => setToastMessage(null)}
           />
         </>
       );
     }
 
-    // If student status is pending or rejected: Dedicated Status Gate
-    if (activeStudent.status !== 'approved') {
+    // Only show "waiting for approval" if the signed-in user's profile in public.profiles actually has status === 'pending'
+    if (activeStudent.status === 'pending') {
       return (
         <>
           <PendingApprovalPage
@@ -295,7 +376,23 @@ export default function App() {
             onRefreshStatus={handleRefreshStudentApproval}
             onSignOut={handleSignOut}
           />
-          <ToastBanner message={toastMessage} onDismiss={() => setToastMessage(null)} />
+          <ToastBanner message={toastMessage} type={toastType} onDismiss={() => setToastMessage(null)} />
+        </>
+      );
+    }
+
+    if (activeStudent.status !== 'approved') {
+      return (
+        <>
+          <AuthPage
+            state={state}
+            initialMode="student-signup"
+            onBackToLanding={() => setAuthMode('landing')}
+            onStudentLogin={handleStudentLogin}
+            onStudentRegister={registerStudent}
+            onTeacherLogin={handleTeacherLogin}
+          />
+          <ToastBanner message={toastMessage} type={toastType} onDismiss={() => setToastMessage(null)} />
         </>
       );
     }
@@ -366,7 +463,7 @@ export default function App() {
           </div>
         </footer>
 
-        <ToastBanner message={toastMessage} onDismiss={() => setToastMessage(null)} />
+        <ToastBanner message={toastMessage} type={toastType} onDismiss={() => setToastMessage(null)} />
       </div>
     );
   }
@@ -437,7 +534,7 @@ export default function App() {
         </div>
       </footer>
 
-      <ToastBanner message={toastMessage} onDismiss={() => setToastMessage(null)} />
+      <ToastBanner message={toastMessage} type={toastType} onDismiss={() => setToastMessage(null)} />
     </div>
   );
 }

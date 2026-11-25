@@ -5,10 +5,11 @@ import { downloadDataUrl } from '../utils/fileHelpers';
 interface PdfPreviewDialogProps {
   src: string;
   fileName: string;
+  hideDownload?: boolean;
   onClose: () => void;
 }
 
-export const PdfPreviewDialog: React.FC<PdfPreviewDialogProps> = ({ src, fileName, onClose }) => (
+export const PdfPreviewDialog: React.FC<PdfPreviewDialogProps> = ({ src, fileName, hideDownload, onClose }) => (
   <div
     role="dialog"
     aria-modal="true"
@@ -19,14 +20,16 @@ export const PdfPreviewDialog: React.FC<PdfPreviewDialogProps> = ({ src, fileNam
       <header className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-700">
         <h2 id="pdf-preview-title" className="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{fileName}</h2>
         <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={() => downloadDataUrl(src, fileName)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-500"
-          >
-            <Download aria-hidden="true" className="size-3.5" />
-            Download
-          </button>
+          {!hideDownload && (
+            <button
+              type="button"
+              onClick={() => downloadDataUrl(src, fileName)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-500"
+            >
+              <Download aria-hidden="true" className="size-3.5" />
+              Download
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}

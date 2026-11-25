@@ -3,6 +3,7 @@ import {
   Award,
   Download,
   ExternalLink,
+  Eye,
   FileCheck,
   FileText,
   Loader2,
@@ -23,7 +24,7 @@ import {
   StudyMaterial,
   UploadedFileMeta,
 } from '../../types/portal';
-import { downloadDataUrl, formatFileSize, readFileAsDataUrl } from '../../utils/fileHelpers';
+import { downloadDataUrl, formatFileSize, getFileCategory, readFileAsDataUrl } from '../../utils/fileHelpers';
 import { formatReadableDate } from '../../utils/formatters';
 import { PdfPreviewDialog } from '../PdfPreviewDialog';
 
@@ -159,6 +160,32 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
     }
   };
 
+  const handleEditAsgFileSelect = async (file?: File) => {
+    if (!file || !editingAsg) return;
+    try {
+      if (file.size > 20 * 1024 * 1024) {
+        onNotify('Choose a file smaller than 20 MB.');
+        return;
+      }
+      const dataUrl = await readFileAsDataUrl(file);
+      const meta: UploadedFileMeta = {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type || 'application/octet-stream',
+        fileData: dataUrl,
+        uploadedAt: new Date().toISOString(),
+      };
+      setEditingAsg({
+        ...editingAsg,
+        attachment: meta,
+        resourceLabel: editingAsg.resourceLabel || file.name,
+      });
+      onNotify(`Attached new file: ${file.name}`);
+    } catch {
+      onNotify('Failed to process file.');
+    }
+  };
+
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!asgTitle.trim() || !asgDueDate || !asgDescription.trim() || !effectiveAsgCourseId) return;
@@ -259,6 +286,7 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
       }
       const fileData = await readFileAsDataUrl(file);
       setReviewAttachment({ fileName: file.name, fileSize: file.size, fileType: 'application/pdf', fileData });
+      onNotify(`Attached graded PDF: ${file.name}`);
     } catch {
       onNotify('Could not read this PDF. Please choose a valid file and try again.');
     }
@@ -403,10 +431,19 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         type="button"
-                        onClick={() => downloadDataUrl(asgAttachment.fileData, asgAttachment.fileName)}
-                        className="rounded-md border border-slate-200 dark:border-slate-800 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-900 dark:text-slate-100 hover:bg-[#F4F4F5]"
+                        onClick={() => setPreviewAttachment(asgAttachment)}
+                        className="rounded-md border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-slate-800 dark:text-indigo-300 inline-flex items-center gap-1"
                       >
-                        Download
+                        <Eye className="h-3 w-3" />
+                        <span>Preview</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadDataUrl(asgAttachment.fileData, asgAttachment.fileName)}
+                        className="rounded-md border border-slate-200 dark:border-slate-800 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-900 dark:text-slate-100 hover:bg-[#F4F4F5] inline-flex items-center gap-1"
+                      >
+                        <Download className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
+                        <span>Download</span>
                       </button>
                       <button
                         type="button"
@@ -450,7 +487,7 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                     />
                     <Upload className="mx-auto h-5 w-5 text-slate-500 dark:text-slate-400" />
                     <p className="mt-1 text-xs font-semibold text-slate-900 dark:text-slate-100">Drop a file here or click to browse</p>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400">PDF, Word docs, past-paper packs, images, spreadsheets</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">PDF worksheets, past-paper packs, images, spreadsheets</p>
                   </div>
                 )}
               </div>
@@ -484,7 +521,7 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                 </p>
               </div>
             ) : (
-              <ul className="divide-y divide-[#E7E5E4]">
+              <ul className="divide-y divide-[#E7E5E4] dark:divide-slate-800">
                 {state.assignments.map((asg) => {
                   const course = courseLookup[asg.courseId];
                   const enrolledStudents = state.students.filter((s) =>
@@ -500,7 +537,7 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                   return (
                     <li
                       key={asg.id}
-                      className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
+                      className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60"
                     >
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0 space-y-1">
@@ -508,11 +545,11 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                             <span className="font-semibold text-indigo-600 dark:text-indigo-400">
                               {course ? `${course.code} · ${course.batchName}` : 'General'}
                             </span>
-                            <span aria-hidden="true" className="text-[#D4D4D8]">·</span>
+                            <span aria-hidden="true" className="text-[#D4D4D8] dark:text-slate-600">·</span>
                             <span className="text-slate-600 dark:text-slate-400 tabular-nums">
                               Due {formatReadableDate(asg.dueDate, false)}
                             </span>
-                            <span aria-hidden="true" className="text-[#D4D4D8]">·</span>
+                            <span aria-hidden="true" className="text-[#D4D4D8] dark:text-slate-600">·</span>
                             <span className="font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
                               {submittedCount} / {enrolledStudents.length} Submitted
                             </span>
@@ -521,16 +558,36 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                           <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{asg.title}</p>
                           <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">{asg.description}</p>
 
-                          {/* Attachment indicator & download */}
-                          {asg.attachment && (
-                            <div className="flex items-center gap-2 pt-1">
+                          {/* Attachment View & Download */}
+                          {(asg.fileUrl || asg.attachment) && (
+                            <div className="flex flex-wrap items-center gap-2 pt-1">
                               <button
                                 type="button"
-                                onClick={() => downloadDataUrl(asg.attachment!.fileData, asg.attachment!.fileName)}
+                                onClick={() =>
+                                  setPreviewAttachment({
+                                    fileData: asg.fileUrl || asg.attachment!.fileData,
+                                    fileName: asg.fileName || asg.attachment?.fileName || `${asg.title}.pdf`,
+                                    fileSize: asg.attachment?.fileSize || 0,
+                                    fileType: 'application/pdf',
+                                  })
+                                }
+                                className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/50 dark:text-indigo-300 dark:hover:bg-indigo-950"
+                              >
+                                <Eye className="h-3 w-3" />
+                                <span>Preview PDF</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  downloadDataUrl(
+                                    asg.fileUrl || asg.attachment!.fileData,
+                                    asg.fileName || asg.attachment?.fileName || `${asg.title}.pdf`
+                                  )
+                                }
                                 className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 px-2.5 py-1 text-[11px] font-semibold text-slate-900 dark:text-slate-100 hover:bg-[#E7E5E4]/60"
                               >
                                 <Download className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
-                                <span>{asg.attachment.fileName} ({formatFileSize(asg.attachment.fileSize)})</span>
+                                <span>Download PDF</span>
                               </button>
                             </div>
                           )}
@@ -559,9 +616,9 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                         </div>
                       </div>
 
-                      {/* Student Submissions List & PDF Download */}
+                      {/* Student Submissions List & PDF View/Download */}
                       {enrolledStudents.length > 0 && (
-                        <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 p-3 space-y-2">
+                        <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 p-3 space-y-2">
                           <div className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-400">
                             <span className="flex items-center gap-1.5">
                               <Users className="h-3.5 w-3.5" />
@@ -576,6 +633,8 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                             {enrolledStudents.map((std) => {
                               const sub = submissions.find((s) => s.studentId === std.id);
                               const status = sub?.status ?? 'Pending';
+                              const studentFileUrl = sub?.fileUrl || sub?.attachment?.fileData;
+                              const studentFileName = sub?.fileName || sub?.attachment?.fileName || `${std.name}_submission.pdf`;
 
                               return (
                                 <div
@@ -590,24 +649,43 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                                           ? 'bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-900/60'
                                           : status === 'Submitted'
                                           ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-900/60'
-                                          : 'bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-900/60'
+                                          : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
                                       }`}
                                     >
                                       {status}
                                       {sub?.grade ? ` (${sub.grade})` : ''}
                                     </span>
 
-                                    {/* Preview and download the student's submitted PDF */}
-                                    {sub?.attachment ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => setPreviewAttachment(sub.attachment!)}
-                                        className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/50 dark:text-indigo-300 dark:hover:bg-indigo-950"
-                                        title={`Preview ${sub.attachment.fileName}`}
-                                      >
-                                        <FileCheck className="h-3 w-3" />
-                                        <span>Preview PDF ({formatFileSize(sub.attachment.fileSize)})</span>
-                                      </button>
+                                    {/* Teacher Submission View: Student PDF Container */}
+                                    {studentFileUrl ? (
+                                      <div className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/70 dark:bg-indigo-950/40 px-2 py-1 text-xs">
+                                        <FileText className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" aria-hidden="true" />
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setPreviewAttachment({
+                                              fileData: studentFileUrl,
+                                              fileName: studentFileName,
+                                              fileSize: sub?.attachment?.fileSize || 0,
+                                              fileType: 'application/pdf',
+                                            })
+                                          }
+                                          className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-slate-800 dark:text-indigo-300 dark:hover:bg-slate-700"
+                                          title={`Preview Submission (${studentFileName})`}
+                                        >
+                                          <Eye className="h-3 w-3" />
+                                          <span>Preview Submission</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => downloadDataUrl(studentFileUrl, studentFileName)}
+                                          className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-indigo-500"
+                                          title={`Download Submission (${studentFileName})`}
+                                        >
+                                          <Download className="h-3 w-3 text-white" aria-hidden="true" />
+                                          <span>Download Submission</span>
+                                        </button>
+                                      </div>
                                     ) : sub?.submissionUrl ? (
                                       <a
                                         href={sub.submissionUrl}
@@ -619,6 +697,30 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                                         <ExternalLink className="h-2.5 w-2.5" />
                                       </a>
                                     ) : null}
+
+                                    {/* Graded Review PDF View & Download */}
+                                    {sub?.reviewAttachment && (
+                                      <div className="flex items-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => setPreviewAttachment(sub.reviewAttachment!)}
+                                          className="inline-flex items-center gap-1 rounded-md border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-700 hover:bg-teal-100 dark:border-teal-900/60 dark:bg-teal-950/50 dark:text-teal-300 dark:hover:bg-teal-950"
+                                          title={`View Graded PDF: ${sub.reviewAttachment.fileName}`}
+                                        >
+                                          <Award className="h-3 w-3 text-teal-600 dark:text-teal-400" />
+                                          <span>View Graded PDF</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => downloadDataUrl(sub.reviewAttachment!.fileData, sub.reviewAttachment!.fileName)}
+                                          className="inline-flex items-center gap-1 rounded-md border border-teal-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-teal-700 hover:bg-teal-50 dark:border-teal-800 dark:bg-slate-800 dark:text-teal-300 dark:hover:bg-slate-700"
+                                          title={`Download Graded PDF: ${sub.reviewAttachment.fileName}`}
+                                        >
+                                          <Download className="h-3 w-3 text-teal-600 dark:text-teal-400" />
+                                          <span>Download</span>
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
 
                                   <button
@@ -786,12 +888,23 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
+                      {getFileCategory(matAttachment.fileType, matAttachment.fileName) === 'pdf' && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewAttachment(matAttachment)}
+                          className="rounded-md border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-slate-800 dark:text-indigo-300 inline-flex items-center gap-1"
+                        >
+                          <Eye className="h-3 w-3" />
+                          <span>Preview</span>
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => downloadDataUrl(matAttachment.fileData, matAttachment.fileName)}
-                        className="rounded-md border border-slate-200 dark:border-slate-800 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-900 dark:text-slate-100 hover:bg-[#F4F4F5]"
+                        className="rounded-md border border-slate-200 dark:border-slate-800 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-900 dark:text-slate-100 hover:bg-[#F4F4F5] inline-flex items-center gap-1"
                       >
-                        Download
+                        <Download className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
+                        <span>Download</span>
                       </button>
                       <button
                         type="button"
@@ -869,14 +982,14 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                 </p>
               </div>
             ) : (
-              <ul className="divide-y divide-[#E7E5E4]">
+              <ul className="divide-y divide-[#E7E5E4] dark:divide-slate-800">
                 {state.materials.map((mat) => {
                   const course = courseLookup[mat.courseId];
                   const isRec = mat.type === 'recording';
                   return (
                     <li
                       key={mat.id}
-                      className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
+                      className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60"
                     >
                       <div className="flex items-start gap-3 min-w-0">
                         <span
@@ -905,14 +1018,26 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
 
                       <div className="flex shrink-0 items-center gap-2">
                         {mat.attachment ? (
-                          <button
-                            type="button"
-                            onClick={() => downloadDataUrl(mat.attachment!.fileData, mat.attachment!.fileName)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100 hover:border-[#18181B]"
-                          >
-                            <Download className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                            <span>Download ({formatFileSize(mat.attachment.fileSize)})</span>
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            {getFileCategory(mat.attachment.fileType, mat.attachment.fileName) === 'pdf' && (
+                              <button
+                                type="button"
+                                onClick={() => setPreviewAttachment(mat.attachment!)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/50 dark:text-indigo-300"
+                              >
+                                <Eye className="h-3 w-3" />
+                                <span>View</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => downloadDataUrl(mat.attachment!.fileData, mat.attachment!.fileName)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100 hover:border-[#18181B]"
+                            >
+                              <Download className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                              <span>Download ({formatFileSize(mat.attachment.fileSize)})</span>
+                            </button>
+                          </div>
                         ) : mat.url ? (
                           <a
                             href={mat.url}
@@ -954,7 +1079,7 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
           aria-labelledby="edit-asg-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-[#18181B]/45 p-4 backdrop-blur-[2px]"
         >
-          <div className="w-full max-w-lg rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xl">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3.5">
               <h3 id="edit-asg-title" className="font-display text-base font-bold text-slate-900 dark:text-slate-100">
                 Edit Assignment
@@ -1014,6 +1139,65 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                 />
               </div>
 
+              {/* Assignment File in Edit Modal */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-900 dark:text-slate-100">
+                  Attached Worksheet File
+                </label>
+                {editingAsg.attachment ? (
+                  <div className="flex items-center justify-between rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-950/50 p-3 text-xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-900 dark:text-slate-100 truncate">
+                          {editingAsg.attachment.fileName}
+                        </p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                          {formatFileSize(editingAsg.attachment.fileSize)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewAttachment(editingAsg.attachment!)}
+                        className="rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-slate-800 dark:text-indigo-300"
+                      >
+                        View
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadDataUrl(editingAsg.attachment!.fileData, editingAsg.attachment!.fileName)}
+                        className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                      >
+                        Download
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingAsg({ ...editingAsg, attachment: undefined })}
+                        className="rounded-md p-1 text-slate-500 hover:text-red-700"
+                        title="Remove file"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <input
+                      ref={editAsgFileInputRef}
+                      type="file"
+                      accept="*/*"
+                      onChange={(e) => {
+                        void handleEditAsgFileSelect(e.target.files?.[0]);
+                        e.currentTarget.value = '';
+                      }}
+                      className="block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    />
+                  </div>
+                )}
+              </div>
+
               <div className="flex justify-end gap-2 border-t border-slate-200 dark:border-slate-800 pt-4">
                 <button
                   type="button"
@@ -1037,6 +1221,7 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
         </div>
       )}
 
+      {/* PDF Preview Modal for any viewed attachment */}
       {previewAttachment && (
         <PdfPreviewDialog
           src={previewAttachment.fileData}
@@ -1045,7 +1230,7 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
         />
       )}
 
-      {/* Grade Modal with student work and tutor review PDF */}
+      {/* Grade Modal with student workings and tutor review PDF */}
       {gradingModalData && (
         <div
           role="dialog"
@@ -1053,10 +1238,10 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
           aria-labelledby="asg-grade-modal-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-[#18181B]/45 p-4 backdrop-blur-[2px]"
         >
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xl space-y-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-xl space-y-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-start justify-between border-b border-slate-200 dark:border-slate-800 pb-3.5">
               <div>
-                <p className="text-xs font-semibold text-[#0F766E]">Grade Submission</p>
+                <p className="text-xs font-semibold text-[#0F766E] dark:text-teal-400">Grade Submission</p>
                 <h3 id="asg-grade-modal-title" className="font-display text-base font-bold text-slate-900 dark:text-slate-100">
                   {gradingModalData.studentName} · {gradingModalData.asg.title}
                 </h3>
@@ -1071,61 +1256,121 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
               </button>
             </div>
 
-            {/* Submitted PDF File Preview & Download */}
-            {gradingModalData.sub?.attachment ? (
-              <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-950/50 p-3 text-xs space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
-                    <FileCheck className="h-4 w-4" />
-                    <span>Submitted Workings PDF</span>
-                  </span>
-                  <span className="text-[10px] text-slate-600 dark:text-slate-400">
-                    {formatFileSize(gradingModalData.sub.attachment.fileSize)}
-                  </span>
+            {/* Student Submission PDF Container */}
+            {(() => {
+              const studentFileUrl = gradingModalData.sub?.fileUrl || gradingModalData.sub?.attachment?.fileData;
+              const studentFileName = gradingModalData.sub?.fileName || gradingModalData.sub?.attachment?.fileName || `${gradingModalData.studentName}_workings.pdf`;
+              if (!studentFileUrl) {
+                if (gradingModalData.sub?.submissionUrl) {
+                  return (
+                    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 p-3 text-xs space-y-1">
+                      <span className="font-semibold text-slate-600 dark:text-slate-400">Submitted Link:</span>
+                      <a
+                        href={gradingModalData.sub.submissionUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-indigo-600 dark:text-indigo-400 hover:underline font-mono truncate"
+                      >
+                        {gradingModalData.sub.submissionUrl}
+                      </a>
+                    </div>
+                  );
+                }
+                return (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 italic">No file attached to this submission.</p>
+                );
+              }
+
+              return (
+                <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-950/50 p-3 text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                      <FileCheck className="h-4 w-4" />
+                      <span>Submitted Workings PDF</span>
+                    </span>
+                    <span className="text-[10px] text-slate-600 dark:text-slate-400">
+                      {gradingModalData.sub?.attachment?.fileSize ? formatFileSize(gradingModalData.sub.attachment.fileSize) : 'PDF'}
+                    </span>
+                  </div>
+                  <p className="font-semibold text-slate-900 dark:text-slate-100 truncate">
+                    {studentFileName}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPreviewAttachment({
+                          fileData: studentFileUrl,
+                          fileName: studentFileName,
+                          fileSize: gradingModalData.sub?.attachment?.fileSize || 0,
+                          fileType: 'application/pdf',
+                        })
+                      }
+                      className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 py-2 text-xs font-semibold text-white hover:bg-indigo-500"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      <span>Preview Submission</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => downloadDataUrl(studentFileUrl, studentFileName)}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-white py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-slate-900 dark:text-indigo-300 dark:hover:bg-indigo-950"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      <span>Download Submission</span>
+                    </button>
+                  </div>
                 </div>
-                <p className="font-semibold text-slate-900 dark:text-slate-100 truncate">
-                  {gradingModalData.sub.attachment.fileName}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setPreviewAttachment(gradingModalData.sub!.attachment!)}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#4338CA] py-2 text-xs font-semibold text-white hover:bg-[#3730A3]"
-                >
-                  <FileText className="h-3.5 w-3.5" />
-                  <span>Preview Student PDF</span>
-                </button>
-              </div>
-            ) : gradingModalData.sub?.submissionUrl ? (
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 p-3 text-xs space-y-1">
-                <span className="font-semibold text-slate-600 dark:text-slate-400">Submitted Link:</span>
-                <a
-                  href={gradingModalData.sub.submissionUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-indigo-600 dark:text-indigo-400 hover:underline font-mono truncate"
-                >
-                  {gradingModalData.sub.submissionUrl}
-                </a>
-              </div>
-            ) : (
-              <p className="text-xs text-slate-500 dark:text-slate-400 italic">No file attached to this submission.</p>
-            )}
+              );
+            })()}
 
             {gradingModalData.sub?.submissionNote && (
-              <div className="rounded-xl bg-[#FAF9F7] border border-slate-200 dark:border-slate-800 p-2.5 text-xs text-slate-600 dark:text-slate-400">
+              <div className="rounded-xl bg-[#FAF9F7] dark:bg-slate-800/80 border border-slate-200 dark:border-slate-800 p-2.5 text-xs text-slate-600 dark:text-slate-400">
                 <strong className="text-slate-900 dark:text-slate-100">Student note:</strong> &ldquo;{gradingModalData.sub.submissionNote}&rdquo;
               </div>
             )}
 
+            {/* Existing Graded Review PDF */}
             {gradingModalData.sub?.reviewAttachment && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs dark:border-teal-900/60 dark:bg-teal-950/40">
-                <span className="min-w-0 truncate font-semibold text-teal-900 dark:text-teal-200">Existing review PDF: {gradingModalData.sub.reviewAttachment.fileName}</span>
-                <button type="button" onClick={() => setPreviewAttachment(gradingModalData.sub!.reviewAttachment!)} className="font-semibold text-teal-800 underline dark:text-teal-300">Preview</button>
+              <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs dark:border-teal-900/60 dark:bg-teal-950/40 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-teal-800 dark:text-teal-200 flex items-center gap-1.5">
+                    <Award className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                    <span>Current Graded Review PDF</span>
+                  </span>
+                  <span className="text-[10px] text-teal-700 dark:text-teal-300">
+                    {formatFileSize(gradingModalData.sub.reviewAttachment.fileSize)}
+                  </span>
+                </div>
+                <p className="font-semibold text-teal-900 dark:text-teal-200 truncate">
+                  {gradingModalData.sub.reviewAttachment.fileName}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewAttachment(gradingModalData.sub!.reviewAttachment!)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-teal-300 bg-white px-2.5 py-1 text-xs font-semibold text-teal-800 hover:bg-teal-100/60 dark:border-teal-800 dark:bg-slate-900 dark:text-teal-200"
+                  >
+                    <Eye className="h-3 w-3" />
+                    <span>View Graded PDF</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadDataUrl(gradingModalData.sub!.reviewAttachment!.fileData, gradingModalData.sub!.reviewAttachment!.fileName)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-teal-300 bg-teal-100/60 px-2.5 py-1 text-xs font-semibold text-teal-900 hover:bg-teal-200/60 dark:border-teal-700 dark:bg-teal-900/60 dark:text-teal-100"
+                  >
+                    <Download className="h-3 w-3" />
+                    <span>Download</span>
+                  </button>
+                </div>
               </div>
             )}
+
             <form onSubmit={handleSaveGrade} className="space-y-4 pt-1">
               <div className="space-y-1.5">
-                <label htmlFor="review-pdf" className="block text-xs font-semibold text-slate-900 dark:text-slate-100">PDF attached to graded review</label>
+                <label htmlFor="review-pdf" className="block text-xs font-semibold text-slate-900 dark:text-slate-100">
+                  {gradingModalData.sub?.reviewAttachment ? 'Replace Graded Review PDF' : 'Attach Graded Review PDF (Optional)'}
+                </label>
                 <input
                   id="review-pdf"
                   type="file"
@@ -1133,15 +1378,44 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
                   onChange={(event) => void handleReviewPdfSelect(event.target.files?.[0])}
                   className="block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-600 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                 />
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">Optional PDF, up to 20 MB. Students can preview and download it after grading.</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Optional PDF, up to 20 MB. Students and teachers can view and download it anytime.
+                </p>
                 {reviewAttachment && (
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className="min-w-0 truncate font-medium text-slate-700 dark:text-slate-300">{reviewAttachment.fileName}</span>
-                    <button type="button" onClick={() => setPreviewAttachment(reviewAttachment)} className="font-semibold text-indigo-600 hover:underline dark:text-indigo-400">Preview</button>
-                    <button type="button" onClick={() => setReviewAttachment(null)} className="font-semibold text-rose-600 hover:underline dark:text-rose-400">Remove</button>
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-indigo-200 bg-indigo-50/80 p-2 text-xs dark:border-indigo-900/60 dark:bg-indigo-950/40">
+                    <span className="min-w-0 truncate font-medium text-slate-900 dark:text-slate-100">
+                      {reviewAttachment.fileName} ({formatFileSize(reviewAttachment.fileSize)})
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewAttachment(reviewAttachment)}
+                        className="font-semibold text-indigo-600 hover:underline dark:text-indigo-400 inline-flex items-center gap-0.5"
+                      >
+                        <Eye className="h-3 w-3" />
+                        <span>View</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadDataUrl(reviewAttachment.fileData, reviewAttachment.fileName)}
+                        className="font-semibold text-slate-700 hover:underline dark:text-slate-300 inline-flex items-center gap-0.5"
+                      >
+                        <Download className="h-3 w-3" />
+                        <span>Download</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setReviewAttachment(null)}
+                        className="font-semibold text-rose-600 hover:underline dark:text-rose-400 inline-flex items-center gap-0.5"
+                      >
+                        <X className="h-3 w-3" />
+                        <span>Remove</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
+
               <div className="space-y-1.5">
                 <label className="block text-xs font-semibold text-slate-900 dark:text-slate-100">
                   Score / Grade

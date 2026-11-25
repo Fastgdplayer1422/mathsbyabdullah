@@ -58,10 +58,19 @@ async function uploadAttachment(bucket: string, path: string, attachment?: Uploa
 
 async function signedAttachment(bucket: string, path: string | null, fileName: string | null, fileSize: number | null, fileType: string | null) {
   if (!path) return undefined;
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
+    return { fileName: fileName || 'document.pdf', fileSize: fileSize || 0, fileType: fileType || 'application/pdf', fileData: path, storagePath: path };
+  }
   try {
-    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 30);
-    if (error) return undefined;
-    return { fileName: fileName || 'download', fileSize: fileSize || 0, fileType: fileType || 'application/octet-stream', fileData: data.signedUrl, storagePath: path };
+    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 60);
+    if (!error && data?.signedUrl) {
+      return { fileName: fileName || 'document.pdf', fileSize: fileSize || 0, fileType: fileType || 'application/octet-stream', fileData: data.signedUrl, storagePath: path };
+    }
+    const { data: pubData } = supabase.storage.from(bucket).getPublicUrl(path);
+    if (pubData?.publicUrl) {
+      return { fileName: fileName || 'document.pdf', fileSize: fileSize || 0, fileType: fileType || 'application/octet-stream', fileData: pubData.publicUrl, storagePath: path };
+    }
+    return undefined;
   } catch {
     return undefined;
   }
@@ -170,17 +179,19 @@ async function loadPortalState(): Promise<{ state: PortalState; errors: string[]
   }
 
   const enrollmentRows = enrollments.data || [];
-  const students: Student[] = (profiles.data || []).filter((row: any) => normalizeValue(row.role) === 'student').map((row: any) => ({
-    id: row.id,
-    name: row.full_name || '',
-    email: row.email || '',
-    status: (['approved', 'rejected'].includes(normalizeValue(row.status)) ? normalizeValue(row.status) : 'pending') as StudentStatus,
-    gradeLevel: row.grade_level || '',
-    notes: row.notes || undefined,
-    requestNote: row.request_note || undefined,
-    enrolledCourseIds: enrollmentRows.filter((entry: any) => entry.student_id === row.id).map((entry: any) => entry.course_id),
-    createdAt: row.created_at || new Date().toISOString(),
-  }));
+  const students: Student[] = (profiles.data || [])
+    .filter((row: any) => normalizeValue(row.role) !== 'teacher' && normalizeValue(row.email) !== 'aa6993248@gmail.com')
+    .map((row: any) => ({
+      id: row.id,
+      name: row.full_name || (row.email ? row.email.split('@')[0] : 'Student'),
+      email: row.email || '',
+      status: (['approved', 'rejected'].includes(normalizeValue(row.status)) ? normalizeValue(row.status) : 'pending') as StudentStatus,
+      gradeLevel: row.grade_level || '',
+      notes: row.notes || undefined,
+      requestNote: row.request_note || undefined,
+      enrolledCourseIds: enrollmentRows.filter((entry: any) => entry.student_id === row.id).map((entry: any) => entry.course_id),
+      createdAt: row.created_at || new Date().toISOString(),
+    }));
   const mappedCourses: Course[] = (courses.data || []).map((row: any) => ({
     id: row.id, code: row.code, title: row.title, batchName: row.batch_name, instructor: row.instructor,
     accentColor: row.accent_color, description: row.description || undefined, scheduleCadence: row.schedule_cadence || undefined,
@@ -190,21 +201,54 @@ async function loadPortalState(): Promise<{ state: PortalState; errors: string[]
     id: row.id, courseId: row.course_id, topic: row.topic, date: row.session_date, startTime: row.start_time,
     endTime: row.end_time, status: row.status, meetingUrl: row.meeting_url,
   }));
-  const mappedAssignments: Assignment[] = await Promise.all((assignments.data || []).map(async (row: any) => ({
-    id: row.id, courseId: row.course_id, title: row.title, dueDate: row.due_date, description: row.description,
-    resourceUrl: row.resource_url, resourceLabel: row.resource_label || undefined,
-    attachment: await signedAttachment('course-materials', row.attachment_path, row.attachment_name, row.attachment_size, row.attachment_type),
-  })));
-  const mappedMaterials: StudyMaterial[] = await Promise.all((materials.data || []).map(async (row: any) => ({
-    id: row.id, courseId: row.course_id, title: row.title, type: row.type, date: row.material_date,
-    metaInfo: row.meta_info, url: row.url,
-    attachment: await signedAttachment('course-materials', row.storage_path, row.file_name, row.file_size, row.file_type),
-  })));
+  const mappedAssignments: Assignment[] = await Promise.all((assignments.data || []).map(async (row: any) => {
+    const rawFileUrl = row.file_url || row.attachment_path;
+    const rawFileName = row.file_name || row.attachment_name;
+    const attachment = await signedAttachment('course-materials', rawFileUrl, rawFileName, row.attachment_size, row.attachment_type);
+    return {
+      id: row.id, courseId: row.course_id, title: row.title, dueDate: row.due_date, description: row.description,
+      resourceUrl: row.resource_url, resourceLabel: row.resource_label || undefined,
+      attachment,
+      fileUrl: attachment?.fileData || rawFileUrl || undefined,
+      fileName: attachment?.fileName || rawFileName || undefined,
+    };
+  }));
+  const mappedMaterials: StudyMaterial[] = await Promise.all((materials.data || []).map(async (row: any) => {
+    const rawFileUrl = row.file_url || row.storage_path;
+    const rawFileName = row.file_name;
+    const attachment = await signedAttachment('course-materials', rawFileUrl, rawFileName, row.file_size, row.file_type);
+    return {
+      id: row.id, courseId: row.course_id, title: row.title, type: row.type, date: row.material_date,
+      metaInfo: row.meta_info, url: row.url,
+      attachment,
+      fileUrl: attachment?.fileData || rawFileUrl || undefined,
+      fileName: attachment?.fileName || rawFileName || undefined,
+    };
+  }));
   const rawSubmissions = submissions.data || [];
   const mappedSubmissions = await Promise.all(rawSubmissions.map(async (row: any) => {
     const studentId = row.student_id || row.user_id || '';
     const rawStatus = (row.status || '').trim().toLowerCase();
     const normalizedStatus = rawStatus === 'graded' ? 'Graded' : 'Submitted';
+    const rawFileUrl = row.file_url || row.storage_path || row.pdf_url;
+    const rawFileName = row.file_name;
+    const rawGradedFileUrl = row.graded_file_url || row.review_storage_path;
+    const rawGradedFileName = row.graded_file_name || row.review_file_name;
+
+    const attachment = (rawFileUrl || rawFileName) && rawFileName !== 'No student attachment'
+      ? await signedAttachment('student-submissions', rawFileUrl, rawFileName || 'submission.pdf', row.file_size, row.file_type)
+      : undefined;
+
+    const reviewAttachment = rawGradedFileUrl
+      ? await signedAttachment(
+          'student-submissions',
+          rawGradedFileUrl,
+          rawGradedFileName || 'graded-review.pdf',
+          row.review_file_size,
+          row.review_file_type || 'application/pdf',
+        )
+      : undefined;
+
     return {
       id: String(row.id),
       assignmentId: String(row.assignment_id || ''),
@@ -215,16 +259,12 @@ async function loadPortalState(): Promise<{ state: PortalState; errors: string[]
       submittedAt: row.submitted_at || row.created_at || new Date().toISOString(),
       grade: row.grade || undefined,
       teacherFeedback: row.teacher_feedback || undefined,
-      attachment: row.file_name && row.file_name !== 'No student attachment'
-        ? await signedAttachment('student-submissions', row.storage_path, row.file_name, row.file_size, row.file_type)
-        : undefined,
-      reviewAttachment: await signedAttachment(
-        'student-submissions',
-        row.review_storage_path,
-        row.review_file_name,
-        row.review_file_size,
-        row.review_file_type,
-      ),
+      attachment,
+      reviewAttachment,
+      fileUrl: attachment?.fileData || rawFileUrl || undefined,
+      fileName: attachment?.fileName || rawFileName || undefined,
+      gradedFileUrl: reviewAttachment?.fileData || rawGradedFileUrl || undefined,
+      gradedFileName: reviewAttachment?.fileName || rawGradedFileName || undefined,
     };
   }));
 
@@ -258,8 +298,15 @@ async function syncChanges(previous: PortalState, next: PortalState) {
     const removed = [...oldById.keys()].filter((key) => !newById.has(key));
     const updates = after.filter((item) => !oldById.has(item.id) || !same(oldById.get(item.id), item));
     if (removed.length) {
-      const { error } = await supabase.from(table).delete().in('id', removed);
-      if (error) throw error;
+      if (table === 'profiles') {
+        const { error } = await supabase.from(table).delete().in('id', removed);
+        if (error) {
+          console.warn('[syncChanges] Profiles delete notice (often handled by RPC):', error.message);
+        }
+      } else {
+        const { error } = await supabase.from(table).delete().in('id', removed);
+        if (error) throw error;
+      }
     }
     if (updates.length) {
       const rows = await Promise.all(updates.map(toRow));
@@ -329,6 +376,9 @@ async function syncChanges(previous: PortalState, next: PortalState) {
       review_file_name: s.reviewAttachment?.fileName || null,
       review_file_size: s.reviewAttachment?.fileSize || null,
       review_file_type: s.reviewAttachment?.fileType || null,
+      graded_file_url: reviewStoragePath,
+      graded_file_name: s.reviewAttachment?.fileName || null,
+      graded_at: s.status === 'Graded' ? isoDate(s.submittedAt) : null,
     };
   }, 'submissions');
   await changed(previous.activityLogs, next.activityLogs, (l: StudentActivityLog) => ({
@@ -432,21 +482,51 @@ export function usePortalStore() {
     const email = data.email.trim().toLowerCase();
 
     try {
-      const { data: signUpData, error } = await supabase.auth.signUp({
-        email,
-        password: data.password,
-        options: {
-          emailRedirectTo: import.meta.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/`,
-          data: { full_name: fullName, grade_level: data.gradeLevel.trim(), request_note: data.requestNote?.trim() || '' },
-        },
-      });
-      if (error) {
-        if (error.message.toLowerCase().includes('already registered')) return { success: false, error: 'Unable to register with these details. If you already have an account, try signing in.' };
-        if (error.message.toLowerCase().includes('password')) return { success: false, error: 'Choose a stronger password that meets the account security requirements.' };
-        return { success: false, error: 'Registration could not be completed. Check your details and try again.' };
+      let userId: string | undefined;
+      let sessionCreated = false;
+
+      // Check if current authenticated user matches this email
+      const { data: currentAuth } = await supabase.auth.getUser();
+      if (currentAuth?.user && currentAuth.user.email?.trim().toLowerCase() === email) {
+        userId = currentAuth.user.id;
+        sessionCreated = true;
+      } else {
+        const { data: signUpData, error } = await supabase.auth.signUp({
+          email,
+          password: data.password,
+          options: {
+            emailRedirectTo: import.meta.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/`,
+            data: { full_name: fullName, grade_level: data.gradeLevel.trim(), request_note: data.requestNote?.trim() || '' },
+          },
+        });
+
+        if (error) {
+          if (error.message.toLowerCase().includes('already registered')) {
+            // User exists in Supabase auth; authenticate with password to get userId and complete their profile row
+            const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
+              email,
+              password: data.password,
+            });
+            if (!signInErr && signInData?.user) {
+              userId = signInData.user.id;
+              sessionCreated = Boolean(signInData.session);
+            } else {
+              return {
+                success: false,
+                error: 'An account with this email already exists. Please verify your password or sign in with your account.',
+              };
+            }
+          } else if (error.message.toLowerCase().includes('password')) {
+            return { success: false, error: 'Choose a stronger password that meets the account security requirements.' };
+          } else {
+            return { success: false, error: 'Registration could not be completed. Check your details and try again.' };
+          }
+        } else {
+          userId = signUpData.user?.id ?? signUpData.session?.user?.id;
+          sessionCreated = Boolean(signUpData.session);
+        }
       }
 
-      const userId = signUpData.user?.id ?? signUpData.session?.user?.id;
       if (!userId) {
         return { success: false, error: 'We could not finish setting up your account. Please try again or contact the teacher.' };
       }
@@ -475,20 +555,49 @@ export function usePortalStore() {
         };
       }
 
-      return { success: true, confirmationRequired: !signUpData.session };
+      await refreshPortalData();
+
+      return { success: true, confirmationRequired: !sessionCreated };
     } catch (registrationError) {
       console.error('[auth] Student registration failed', registrationError);
       return { success: false, error: 'Registration could not be completed. Please try again or contact the teacher.' };
     }
-  }, []);
+  }, [refreshPortalData]);
   const approveStudent = useCallback((studentId: string, enrolledCourseIds: string[] = []) => persistAndRefresh((prev) => ({
     ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, status: 'approved', enrolledCourseIds } : s),
     activityLogs: [{ id: id(), studentId, action: 'Account approved by Teacher', details: `Enrolled in ${enrolledCourseIds.length} course batch(es)`, timestamp: new Date().toISOString() }, ...prev.activityLogs],
   })), [persistAndRefresh]);
-  const rejectStudent = useCallback((studentId: string) => persistAndRefresh((prev) => ({
-    ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, status: 'rejected' } : s),
-    activityLogs: [{ id: id(), studentId, action: 'Registration declined', details: 'Reviewed by tutor', timestamp: new Date().toISOString() }, ...prev.activityLogs],
-  })), [persistAndRefresh]);
+  const rejectStudent = useCallback(async (studentId: string) => {
+    try {
+      const { data, error } = await supabase.rpc('decline_and_delete_user', {
+        target_user_id: studentId,
+      });
+
+      const errorMessage = error?.message
+        || (data && typeof data === 'object' && ('error' in data) ? String((data as any).error) : null)
+        || (data && typeof data === 'object' && ('success' in data) && !(data as any).success ? String((data as any).message || 'Decline operation failed.') : null)
+        || (data === false ? 'Unable to decline and remove student.' : null);
+
+      if (errorMessage) {
+        console.error('[Supabase RPC] decline_and_delete_user error:', error || data);
+        return { success: false, error: errorMessage };
+      }
+      setState((prev) => {
+        const next = {
+          ...prev,
+          students: prev.students.filter((s) => s.id !== studentId),
+          activityLogs: prev.activityLogs.filter((l) => l.studentId !== studentId),
+          submissions: prev.submissions.filter((s) => s.studentId !== studentId),
+        };
+        stateRef.current = next;
+        return next;
+      });
+      return { success: true };
+    } catch (err: any) {
+      console.error('[Supabase RPC] decline_and_delete_user error:', err);
+      return { success: false, error: err?.message || getPortalErrorMessage(err) };
+    }
+  }, []);
   const changeStudentStatus = useCallback((studentId: string, status: StudentStatus) => persistAndRefresh((prev) => ({ ...prev, students: prev.students.map((s) => s.id === studentId ? { ...s, status } : s) })), [persistAndRefresh]);
   const addStudent = useCallback(async (studentData: Omit<Student, 'id' | 'createdAt'>, initialPassword: string) => {
     const authClient = createIsolatedAuthClient();
@@ -812,6 +921,9 @@ export function usePortalStore() {
           review_file_name: reviewAttachment?.fileName || updatedSubmission.reviewAttachment?.fileName || null,
           review_file_size: reviewAttachment?.fileSize || updatedSubmission.reviewAttachment?.fileSize || null,
           review_file_type: reviewAttachment?.fileType || updatedSubmission.reviewAttachment?.fileType || null,
+          graded_file_url: reviewStoragePath,
+          graded_file_name: reviewAttachment?.fileName || updatedSubmission.reviewAttachment?.fileName || null,
+          graded_at: now,
         };
         const { error } = await writeWithOptionalColumns('submissions', [payload], (candidate) =>
           supabase.from('submissions').upsert(candidate, { onConflict: 'id' })
