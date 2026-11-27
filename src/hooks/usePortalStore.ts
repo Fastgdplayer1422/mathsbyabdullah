@@ -44,15 +44,135 @@ function saveCachedSubmissions(submissions: any[], userId?: string) {
   }
 }
 
+export interface UploadFileResult {
+  fileUrl: string;
+  fileName: string;
+  storagePath: string;
+  bucket: string;
+}
+
+export async function uploadAssignmentFileToStorage(
+  assignmentId: string,
+  attachment: UploadedFileMeta
+): Promise<UploadFileResult> {
+  const fileName = attachment.fileName || 'assignment.pdf';
+  const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const filePath = `${assignmentId}/${safeFileName}`;
+
+  // If already a remote URL (not data:), return as is
+  if (!attachment.fileData?.startsWith('data:')) {
+    const existingUrl = attachment.fileData || '';
+    return {
+      fileUrl: existingUrl,
+      fileName,
+      storagePath: attachment.storagePath || filePath,
+      bucket: 'assignments',
+    };
+  }
+
+  // Convert data URL to Blob
+  const response = await fetch(attachment.fileData);
+  const blob = await response.blob();
+  const contentType = attachment.fileType || blob.type || 'application/pdf';
+
+  // Discover candidate buckets (e.g. assignments, materials, course-materials)
+  let candidateBuckets = ['assignments', 'materials', 'course-materials'];
+  try {
+    const { data: listedBuckets, error: listError } = await supabase.storage.listBuckets();
+    if (!listError && Array.isArray(listedBuckets) && listedBuckets.length > 0) {
+      const existingNames = listedBuckets.map((b) => b.name);
+      const matched = ['assignments', 'materials', 'course-materials'].filter((name) =>
+        existingNames.includes(name)
+      );
+      if (matched.length > 0) {
+        candidateBuckets = matched;
+      }
+    }
+  } catch {
+    // Keep default candidate list
+  }
+
+  let uploadSuccess = false;
+  let successfulBucket = candidateBuckets[0];
+  let successfulPath = filePath;
+  let lastError: any = null;
+
+  for (const bucket of candidateBuckets) {
+    try {
+      const testPaths = [filePath, `assignments/${filePath}`];
+      for (const p of testPaths) {
+        const { error: uploadError } = await supabase.storage.from(bucket).upload(p, blob, {
+          contentType,
+          upsert: true,
+        });
+        if (!uploadError) {
+          uploadSuccess = true;
+          successfulBucket = bucket;
+          successfulPath = p;
+          break;
+        } else {
+          lastError = uploadError;
+        }
+      }
+      if (uploadSuccess) break;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  if (!uploadSuccess) {
+    const errMsg = lastError?.message || lastError?.error_description || String(lastError || 'Storage upload failed');
+    throw new Error(`Storage upload failed: ${errMsg}`);
+  }
+
+  // Retrieve public URL or signed URL
+  let fileUrl = '';
+  try {
+    const { data: pubData } = supabase.storage.from(successfulBucket).getPublicUrl(successfulPath);
+    if (pubData?.publicUrl) {
+      fileUrl = pubData.publicUrl;
+    }
+  } catch {
+    // fallback
+  }
+
+  if (!fileUrl) {
+    try {
+      const { data: signedData, error: signError } = await supabase.storage.from(successfulBucket).createSignedUrl(successfulPath, 60 * 60 * 24 * 365);
+      if (!signError && signedData?.signedUrl) {
+        fileUrl = signedData.signedUrl;
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  const finalFileUrl = fileUrl || successfulPath;
+  const storagePath = `${successfulBucket}/${successfulPath}`;
+
+  return {
+    fileUrl: finalFileUrl,
+    fileName,
+    storagePath,
+    bucket: successfulBucket,
+  };
+}
+
 async function uploadAttachment(bucket: string, path: string, attachment?: UploadedFileMeta) {
   if (!attachment?.fileData?.startsWith('data:')) return path;
   const response = await fetch(attachment.fileData);
   const blob = await response.blob();
-  const { error } = await supabase.storage.from(bucket).upload(path, blob, {
-    contentType: attachment.fileType || blob.type,
-    upsert: true,
-  });
-  if (error) throw error;
+  const buckets = [bucket, 'materials', 'course-materials', 'assignments'].filter((v, i, a) => a.indexOf(v) === i);
+  let lastErr: any = null;
+  for (const b of buckets) {
+    const { error } = await supabase.storage.from(b).upload(path, blob, {
+      contentType: attachment.fileType || blob.type,
+      upsert: true,
+    });
+    if (!error) return path;
+    lastErr = error;
+  }
+  if (lastErr) throw lastErr;
   return path;
 }
 
@@ -61,19 +181,23 @@ async function signedAttachment(bucket: string, path: string | null, fileName: s
   if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
     return { fileName: fileName || 'document.pdf', fileSize: fileSize || 0, fileType: fileType || 'application/pdf', fileData: path, storagePath: path };
   }
-  try {
-    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 60);
-    if (!error && data?.signedUrl) {
-      return { fileName: fileName || 'document.pdf', fileSize: fileSize || 0, fileType: fileType || 'application/octet-stream', fileData: data.signedUrl, storagePath: path };
+  const cleanPath = path.replace(/^(course-materials|assignments|materials|student-submissions)\//, '');
+  const bucketsToTry = [bucket, 'assignments', 'materials', 'course-materials', 'student-submissions'].filter((v, i, a) => a.indexOf(v) === i);
+  for (const b of bucketsToTry) {
+    try {
+      const { data, error } = await supabase.storage.from(b).createSignedUrl(cleanPath, 60 * 60);
+      if (!error && data?.signedUrl) {
+        return { fileName: fileName || 'document.pdf', fileSize: fileSize || 0, fileType: fileType || 'application/pdf', fileData: data.signedUrl, storagePath: path };
+      }
+      const { data: pubData } = supabase.storage.from(b).getPublicUrl(cleanPath);
+      if (pubData?.publicUrl) {
+        return { fileName: fileName || 'document.pdf', fileSize: fileSize || 0, fileType: fileType || 'application/pdf', fileData: pubData.publicUrl, storagePath: path };
+      }
+    } catch {
+      // try next bucket
     }
-    const { data: pubData } = supabase.storage.from(bucket).getPublicUrl(path);
-    if (pubData?.publicUrl) {
-      return { fileName: fileName || 'document.pdf', fileSize: fileSize || 0, fileType: fileType || 'application/octet-stream', fileData: pubData.publicUrl, storagePath: path };
-    }
-    return undefined;
-  } catch {
-    return undefined;
   }
+  return undefined;
 }
 
 function getPortalErrorMessage(error: unknown) {
@@ -202,15 +326,56 @@ async function loadPortalState(): Promise<{ state: PortalState; errors: string[]
     endTime: row.end_time, status: row.status, meetingUrl: row.meeting_url,
   }));
   const mappedAssignments: Assignment[] = await Promise.all((assignments.data || []).map(async (row: any) => {
-    const rawFileUrl = row.file_url || row.attachment_path;
-    const rawFileName = row.file_name || row.attachment_name;
-    const attachment = await signedAttachment('course-materials', rawFileUrl, rawFileName, row.attachment_size, row.attachment_type);
+    const rawFileUrl =
+      row.file_url ||
+      row.attachment_url ||
+      row.pdf_url ||
+      row.material_url ||
+      row.storage_path ||
+      row.attachment_path ||
+      row.file_path ||
+      (typeof row.attachment === 'string' ? row.attachment : row.attachment?.fileData || row.attachment?.storagePath) ||
+      (row.resource_url && (/\.pdf($|\?)/i.test(row.resource_url) || row.resource_url.includes('/storage/v1/')) ? row.resource_url : null);
+
+    const rawFileName =
+      row.file_name ||
+      row.attachment_name ||
+      row.pdf_name ||
+      row.material_name ||
+      row.name ||
+      row.attachment?.fileName ||
+      row.resource_label ||
+      (rawFileUrl && typeof rawFileUrl === 'string' ? rawFileUrl.split('/').pop()?.split('?')[0] : null) ||
+      `${row.title || 'Assignment'}.pdf`;
+
+    const rawFileSize = row.file_size || row.attachment_size || row.size || row.attachment?.fileSize || null;
+    const rawFileType = row.file_type || row.attachment_type || row.mime_type || row.attachment?.fileType || 'application/pdf';
+
+    const attachment = await signedAttachment('assignments', rawFileUrl, rawFileName, rawFileSize, rawFileType);
+    const resolvedUrl = attachment?.fileData || (rawFileUrl && (typeof rawFileUrl === 'string' && (rawFileUrl.startsWith('http://') || rawFileUrl.startsWith('https://') || rawFileUrl.startsWith('data:'))) ? rawFileUrl : undefined);
+
     return {
-      id: row.id, courseId: row.course_id, title: row.title, dueDate: row.due_date, description: row.description,
-      resourceUrl: row.resource_url, resourceLabel: row.resource_label || undefined,
-      attachment,
-      fileUrl: attachment?.fileData || rawFileUrl || undefined,
+      id: row.id,
+      courseId: row.course_id,
+      title: row.title,
+      dueDate: row.due_date,
+      description: row.description,
+      resourceUrl: row.resource_url || (resolvedUrl && resolvedUrl.startsWith('http') ? resolvedUrl : ''),
+      resourceLabel: row.resource_label || undefined,
+      attachment: attachment || (resolvedUrl ? {
+        fileName: rawFileName,
+        fileSize: rawFileSize || 0,
+        fileType: rawFileType,
+        fileData: resolvedUrl,
+        storagePath: rawFileUrl,
+      } : undefined),
+      fileUrl: resolvedUrl || rawFileUrl || undefined,
       fileName: attachment?.fileName || rawFileName || undefined,
+      attachmentUrl: row.attachment_url || undefined,
+      pdfUrl: row.pdf_url || undefined,
+      materialUrl: row.material_url || undefined,
+      storagePath: row.storage_path || row.attachment_path || undefined,
+      rawRow: row,
     };
   }));
   const mappedMaterials: StudyMaterial[] = await Promise.all((materials.data || []).map(async (row: any) => {
@@ -689,44 +854,123 @@ export function usePortalStore() {
     return refreshAfterTeacherSave('class_sessions', { id: sessionId, ...payload }, data, error);
   }, [refreshAfterTeacherSave]);
   const deleteSession = useCallback((sessionId: string) => persistAndRefresh((prev) => ({ ...prev, sessions: prev.sessions.filter((s) => s.id !== sessionId) })), [persistAndRefresh]);
-  const addAssignment = useCallback(async (assignment: Omit<Assignment, 'id'>) => {
+  const addAssignment = useCallback(async (assignment: Omit<Assignment, 'id'>): Promise<{ success: boolean; error?: string }> => {
     const assignmentId = id();
+
+    // 1. Upload selected file to Supabase Storage
+    // If the upload returns an error, stop immediately without saving the assignment with file_url: null
+    let uploadResult: UploadFileResult | null = null;
+    if (assignment.attachment) {
+      try {
+        uploadResult = await uploadAssignmentFileToStorage(assignmentId, assignment.attachment);
+      } catch (uploadError) {
+        const errorMsg = uploadError instanceof Error ? uploadError.message : String(uploadError || 'Storage upload failed');
+        console.error('[Supabase Storage] Assignment upload error:', errorMsg);
+        return { success: false, error: errorMsg };
+      }
+    }
+
     try {
+      const fileUrl = uploadResult?.fileUrl || assignment.fileUrl || null;
+      const fileName = uploadResult?.fileName || assignment.fileName || assignment.attachment?.fileName || null;
+      const storagePath = uploadResult?.storagePath || assignment.storagePath || null;
+
       const payload = {
-        id: assignmentId, course_id: databaseUuid(assignment.courseId), title: assignment.title, due_date: assignment.dueDate,
-        description: assignment.description, resource_url: normalizeExternalUrl(assignment.resourceUrl),
-        resource_label: assignment.resourceLabel || null,
-        attachment_path: await uploadAttachment('course-materials', `assignments/${assignmentId}/${assignment.attachment?.fileName || 'attachment'}`, assignment.attachment),
-        attachment_name: assignment.attachment?.fileName || null, attachment_size: assignment.attachment?.fileSize || null,
-        attachment_type: assignment.attachment?.fileType || null,
+        id: assignmentId,
+        course_id: databaseUuid(assignment.courseId),
+        title: assignment.title,
+        due_date: assignment.dueDate,
+        description: assignment.description,
+        resource_url: fileUrl || normalizeExternalUrl(assignment.resourceUrl) || '',
+        resource_label: assignment.resourceLabel || fileName || 'Worksheet PDF',
+        file_url: fileUrl,
+        file_name: fileName,
+        storage_path: storagePath,
+        attachment_path: storagePath,
+        attachment_name: fileName,
+        attachment_size: assignment.attachment?.fileSize || null,
+        attachment_type: assignment.attachment?.fileType || 'application/pdf',
       };
-      const { data, error } = await writeWithOptionalColumns('assignments', [payload], (candidate) => supabase.from('assignments').insert(candidate).select());
-      return refreshAfterTeacherSave('assignments', payload, data, error);
+
+      const { data, error } = await writeWithOptionalColumns('assignments', [payload], (candidate) =>
+        supabase.from('assignments').insert(candidate).select()
+      );
+
+      if (error) {
+        reportTeacherSaveFailure('assignments', { id: assignmentId, ...assignment }, error);
+        return { success: false, error: getPortalErrorMessage(error) };
+      }
+
+      // Verify that the newly created row has a non-null file_url
+      const insertedRow = Array.isArray(data) ? data[0] : data;
+      if (fileUrl && insertedRow && !insertedRow.file_url) {
+        try {
+          await supabase.from('assignments').update({ file_url: fileUrl }).eq('id', assignmentId);
+        } catch {
+          // ignore optional retry
+        }
+      }
+
+      await refreshPortalData();
+      return { success: true };
     } catch (error) {
       reportTeacherSaveFailure('assignments', { id: assignmentId, ...assignment }, error);
-      return false;
+      return { success: false, error: getPortalErrorMessage(error) };
     }
-  }, [refreshAfterTeacherSave, reportTeacherSaveFailure]);
-  const updateAssignment = useCallback(async (assignmentId: string, updates: Partial<Omit<Assignment, 'id'>>) => {
+  }, [refreshPortalData, reportTeacherSaveFailure]);
+  const updateAssignment = useCallback(async (assignmentId: string, updates: Partial<Omit<Assignment, 'id'>>): Promise<{ success: boolean; error?: string }> => {
     const current = stateRef.current.assignments.find((assignment) => assignment.id === assignmentId);
-    if (!current) return false;
+    if (!current) return { success: false, error: 'Assignment not found' };
     const assignment = { ...current, ...updates };
+
+    let uploadResult: UploadFileResult | null = null;
+    if (updates.attachment && updates.attachment.fileData?.startsWith('data:')) {
+      try {
+        uploadResult = await uploadAssignmentFileToStorage(assignmentId, updates.attachment);
+      } catch (uploadError) {
+        const errorMsg = uploadError instanceof Error ? uploadError.message : String(uploadError || 'Storage upload failed');
+        console.error('[Supabase Storage] Assignment update upload error:', errorMsg);
+        return { success: false, error: errorMsg };
+      }
+    }
+
     try {
+      const fileUrl = uploadResult?.fileUrl || assignment.fileUrl || null;
+      const fileName = uploadResult?.fileName || assignment.fileName || assignment.attachment?.fileName || null;
+      const storagePath = uploadResult?.storagePath || assignment.storagePath || null;
+
       const payload = {
-        course_id: databaseUuid(assignment.courseId), title: assignment.title, due_date: assignment.dueDate,
-        description: assignment.description, resource_url: normalizeExternalUrl(assignment.resourceUrl),
-        resource_label: assignment.resourceLabel || null,
-        attachment_path: await uploadAttachment('course-materials', `assignments/${assignmentId}/${assignment.attachment?.fileName || 'attachment'}`, assignment.attachment),
-        attachment_name: assignment.attachment?.fileName || null, attachment_size: assignment.attachment?.fileSize || null,
+        course_id: databaseUuid(assignment.courseId),
+        title: assignment.title,
+        due_date: assignment.dueDate,
+        description: assignment.description,
+        resource_url: fileUrl || normalizeExternalUrl(assignment.resourceUrl) || '',
+        resource_label: assignment.resourceLabel || fileName || null,
+        file_url: fileUrl,
+        file_name: fileName,
+        storage_path: storagePath,
+        attachment_path: storagePath,
+        attachment_name: fileName,
+        attachment_size: assignment.attachment?.fileSize || null,
         attachment_type: assignment.attachment?.fileType || null,
       };
-      const { data, error } = await writeWithOptionalColumns('assignments', payload, (candidate) => supabase.from('assignments').update(candidate).eq('id', assignmentId).select());
-      return refreshAfterTeacherSave('assignments', { id: assignmentId, ...payload }, data, error);
+
+      const { data, error } = await writeWithOptionalColumns('assignments', payload, (candidate) =>
+        supabase.from('assignments').update(candidate).eq('id', assignmentId).select()
+      );
+
+      if (error) {
+        reportTeacherSaveFailure('assignments', assignment, error);
+        return { success: false, error: getPortalErrorMessage(error) };
+      }
+
+      await refreshPortalData();
+      return { success: true };
     } catch (error) {
       reportTeacherSaveFailure('assignments', assignment, error);
-      return false;
+      return { success: false, error: getPortalErrorMessage(error) };
     }
-  }, [refreshAfterTeacherSave, reportTeacherSaveFailure]);
+  }, [refreshPortalData, reportTeacherSaveFailure]);
   const deleteAssignment = useCallback((assignmentId: string) => persistAndRefresh((prev) => ({ ...prev, assignments: prev.assignments.filter((a) => a.id !== assignmentId), submissions: prev.submissions.filter((s) => s.assignmentId !== assignmentId) })), [persistAndRefresh]);
   const submitAssignment = useCallback(async (
     assignmentId: string,

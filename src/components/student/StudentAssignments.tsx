@@ -26,6 +26,81 @@ import {
 import { formatReadableDate } from '../../utils/formatters';
 import { downloadDataUrl, formatFileSize, readFileAsDataUrl } from '../../utils/fileHelpers';
 import { PdfPreviewDialog } from '../PdfPreviewDialog';
+import { supabase } from '../../lib/supabase';
+
+export function getAssignmentFileMeta(assignment: any): {
+  url: string | null;
+  fileName: string;
+  hasFile: boolean;
+  storagePath: string | null;
+} {
+  if (!assignment) return { url: null, fileName: 'Assignment.pdf', hasFile: false, storagePath: null };
+
+  const raw = assignment.rawRow || {};
+
+  const possibleUrlOrPath =
+    assignment.fileUrl ||
+    assignment.attachment?.fileData ||
+    assignment.pdfUrl ||
+    assignment.attachmentUrl ||
+    assignment.materialUrl ||
+    assignment.storagePath ||
+    assignment.attachment?.storagePath ||
+    raw.file_url ||
+    raw.attachment_url ||
+    raw.pdf_url ||
+    raw.material_url ||
+    raw.storage_path ||
+    raw.attachment_path ||
+    raw.file_path ||
+    (assignment.resourceUrl && (/\.pdf($|\?)/i.test(assignment.resourceUrl) || assignment.resourceUrl.includes('/storage/v1/')) ? assignment.resourceUrl : null);
+
+  const fileName =
+    assignment.fileName ||
+    assignment.attachment?.fileName ||
+    raw.file_name ||
+    raw.attachment_name ||
+    raw.pdf_name ||
+    raw.material_name ||
+    assignment.resourceLabel ||
+    (typeof possibleUrlOrPath === 'string' && possibleUrlOrPath.includes('/') ? possibleUrlOrPath.split('/').pop()?.split('?')[0] : null) ||
+    `${assignment.title || 'Assignment'}.pdf`;
+
+  const storagePath =
+    assignment.storagePath ||
+    assignment.attachment?.storagePath ||
+    raw.storage_path ||
+    raw.attachment_path ||
+    (typeof possibleUrlOrPath === 'string' && !possibleUrlOrPath.startsWith('http') && !possibleUrlOrPath.startsWith('data:') ? possibleUrlOrPath : null);
+
+  const hasFile = Boolean(possibleUrlOrPath && possibleUrlOrPath !== 'no-student-file' && possibleUrlOrPath !== 'No student attachment');
+
+  const url = (typeof possibleUrlOrPath === 'string' && (possibleUrlOrPath.startsWith('http://') || possibleUrlOrPath.startsWith('https://') || possibleUrlOrPath.startsWith('data:')))
+    ? possibleUrlOrPath
+    : null;
+
+  return { url, fileName, hasFile, storagePath };
+}
+
+async function resolveStoragePathUrl(path: string): Promise<string | null> {
+  if (!path) return null;
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
+    return path;
+  }
+  const cleanPath = path.replace(/^(course-materials|assignments|materials|student-submissions)\//, '');
+  const buckets = ['assignments', 'materials', 'course-materials', 'student-submissions'];
+  for (const bucket of buckets) {
+    try {
+      const { data, error } = await supabase.storage.from(bucket).createSignedUrl(cleanPath, 60 * 60);
+      if (!error && data?.signedUrl) return data.signedUrl;
+      const { data: pubData } = supabase.storage.from(bucket).getPublicUrl(cleanPath);
+      if (pubData?.publicUrl) return pubData.publicUrl;
+    } catch {
+      // try next bucket
+    }
+  }
+  return null;
+}
 
 interface StudentAssignmentsProps {
   state: PortalState;
@@ -120,8 +195,9 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
           String(s.studentId).toLowerCase() === String(activeStudent.id).toLowerCase()
       );
       const status = normalizeAssignmentStatus(sub?.status);
-      const fileUrl = asg.fileUrl || asg.attachment?.fileData;
-      const fileName = asg.fileName || asg.attachment?.fileName || asg.resourceLabel || `${asg.title}.pdf`;
+      const meta = getAssignmentFileMeta(asg);
+      const fileUrl = meta.url || asg.fileUrl || asg.attachment?.fileData;
+      const fileName = meta.fileName;
       const gradedFileUrl = sub?.gradedFileUrl || sub?.reviewAttachment?.fileData;
       const gradedFileName = sub?.gradedFileName || sub?.reviewAttachment?.fileName || 'graded-feedback.pdf';
       const studentFileUrl = sub?.fileUrl || sub?.attachment?.fileData;
@@ -138,6 +214,11 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
         reviewAttachment: sub?.reviewAttachment,
         fileUrl,
         fileName,
+        attachmentUrl: asg.attachmentUrl,
+        pdfUrl: asg.pdfUrl,
+        materialUrl: asg.materialUrl,
+        storagePath: meta.storagePath || asg.storagePath,
+        rawRow: asg.rawRow,
         gradedFileUrl,
         gradedFileName,
         studentFileUrl,
@@ -180,6 +261,37 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
       </div>
     );
   }
+
+  const handlePreviewAssignment = async (assignment: any) => {
+    const meta = getAssignmentFileMeta(assignment);
+    let targetUrl = meta.url;
+    if (!targetUrl && meta.storagePath) {
+      targetUrl = await resolveStoragePathUrl(meta.storagePath);
+    }
+    if (targetUrl) {
+      setPreviewPdf({
+        src: targetUrl,
+        fileName: meta.fileName,
+      });
+      onNotify(`Previewing "${meta.fileName}"`);
+    } else {
+      onNotify('Unable to load assignment preview. Please check back shortly.');
+    }
+  };
+
+  const handleDownloadAssignment = async (assignment: any) => {
+    const meta = getAssignmentFileMeta(assignment);
+    let targetUrl = meta.url;
+    if (!targetUrl && meta.storagePath) {
+      targetUrl = await resolveStoragePathUrl(meta.storagePath);
+    }
+    if (targetUrl) {
+      await downloadDataUrl(targetUrl, meta.fileName);
+      onNotify(`Downloading "${meta.fileName}"`);
+    } else {
+      onNotify('Unable to download assignment file.');
+    }
+  };
 
   const openSubmitModal = (assignment: Assignment & { submissionUrl?: string; submissionNote?: string }) => {
     setActiveModalAssignment(assignment);
@@ -338,6 +450,7 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
           {filteredAssignments.map((assignment) => {
             const course = courseLookup[assignment.courseId];
             const statusMeta = ASSIGNMENT_STATUS_META[assignment.status] || ASSIGNMENT_STATUS_META.Pending;
+            const fileMeta = getAssignmentFileMeta(assignment);
 
             return (
               <article
@@ -374,13 +487,13 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
                     </p>
 
                     {/* Teacher Assignment PDF Container */}
-                    {(assignment.fileUrl || assignment.attachment?.fileData) && (
+                    {fileMeta.hasFile && (
                       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/60 dark:bg-indigo-950/40 p-3">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <FileText className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" aria-hidden="true" />
                           <div className="min-w-0">
                             <span className="block text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
-                              {assignment.fileName || assignment.attachment?.fileName || assignment.resourceLabel || `${assignment.title}.pdf`}
+                              {fileMeta.fileName}
                             </span>
                             <span className="block text-[11px] text-slate-500 dark:text-slate-400">
                               Worksheet &amp; Task Materials (PDF)
@@ -390,29 +503,19 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
                         <div className="flex items-center gap-2 shrink-0">
                           <button
                             type="button"
-                            onClick={() =>
-                              setPreviewPdf({
-                                src: assignment.fileUrl || assignment.attachment!.fileData,
-                                fileName: assignment.fileName || assignment.attachment?.fileName || `${assignment.title}.pdf`,
-                              })
-                            }
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-slate-700 transition-colors"
+                            onClick={() => void handlePreviewAssignment(assignment)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-slate-700 transition-colors shadow-2xs"
                           >
                             <Eye className="h-3.5 w-3.5" aria-hidden="true" />
-                            <span>Preview PDF</span>
+                            <span>Preview Assignment</span>
                           </button>
                           <button
                             type="button"
-                            onClick={() =>
-                              downloadDataUrl(
-                                assignment.fileUrl || assignment.attachment!.fileData,
-                                assignment.fileName || assignment.attachment?.fileName || `${assignment.title}.pdf`
-                              )
-                            }
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 transition-colors"
+                            onClick={() => void handleDownloadAssignment(assignment)}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 transition-colors shadow-2xs"
                           >
                             <Download className="h-3.5 w-3.5" aria-hidden="true" />
-                            <span>Download PDF</span>
+                            <span>Download Assignment</span>
                           </button>
                         </div>
                       </div>
@@ -531,38 +634,29 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
                   </div>
 
                   {/* Right Actions */}
-                  <div className="flex shrink-0 flex-wrap items-center gap-2.5 lg:flex-col lg:items-end">
-                    {(assignment.fileUrl || assignment.attachment) ? (
+                  <div className="flex shrink-0 flex-wrap items-center gap-2.5">
+                    {fileMeta.hasFile && (
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
-                          onClick={() =>
-                            setPreviewPdf({
-                              src: assignment.fileUrl || assignment.attachment!.fileData,
-                              fileName: assignment.fileName || assignment.attachment?.fileName || `${assignment.title}.pdf`,
-                            })
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 transition-colors hover:border-slate-400 dark:hover:border-slate-600 whitespace-nowrap shrink-0"
+                          onClick={() => void handlePreviewAssignment(assignment)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 transition-colors hover:border-slate-400 dark:hover:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 whitespace-nowrap shrink-0 shadow-2xs"
                         >
-                          <Eye className="h-3.5 w-3.5" aria-hidden="true" />
-                          <span>Preview PDF</span>
+                          <Eye className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
+                          <span>Preview Assignment</span>
                         </button>
                         <button
                           type="button"
-                          onClick={() =>
-                            downloadDataUrl(
-                              assignment.fileUrl || assignment.attachment!.fileData,
-                              assignment.fileName || assignment.attachment?.fileName || `${assignment.title}.pdf`
-                            )
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 transition-colors hover:border-slate-400 dark:hover:border-slate-600 whitespace-nowrap shrink-0"
-                          title="Download PDF"
+                          onClick={() => void handleDownloadAssignment(assignment)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 transition-colors hover:border-slate-400 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 whitespace-nowrap shrink-0 shadow-2xs"
+                          title="Download Assignment"
                         >
                           <Download className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
-                          <span>Download PDF</span>
+                          <span>Download Assignment</span>
                         </button>
                       </div>
-                    ) : assignment.resourceUrl ? (
+                    )}
+                    {!fileMeta.hasFile && assignment.resourceUrl ? (
                       <a
                         href={assignment.resourceUrl}
                         target="_blank"
@@ -578,7 +672,7 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
                       <button
                         type="button"
                         onClick={() => openSubmitModal(assignment)}
-                        className="inline-flex items-center gap-2 rounded-full bg-slate-900 dark:bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-slate-800 dark:hover:bg-indigo-500 whitespace-nowrap shrink-0"
+                        className="inline-flex items-center gap-2 rounded-full bg-slate-900 dark:bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-slate-800 dark:hover:bg-indigo-500 whitespace-nowrap shrink-0 shadow-sm"
                       >
                         <Send className="h-3.5 w-3.5 text-teal-400" aria-hidden="true" />
                         <span>Submit Work</span>
@@ -649,6 +743,45 @@ export const StudentAssignments: React.FC<StudentAssignmentsProps> = ({
             </div>
 
             <form onSubmit={handleModalSubmit} className="mt-5 space-y-4">
+              {/* Top of Submission modal: Teacher's Attached Assignment File */}
+              {(() => {
+                const modalFileMeta = getAssignmentFileMeta(activeModalAssignment);
+                if (!modalFileMeta.hasFile) return null;
+                return (
+                  <div className="rounded-xl border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/70 dark:bg-indigo-950/40 p-3.5 space-y-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <FileText className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" aria-hidden="true" />
+                      <div className="min-w-0">
+                        <span className="block text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+                          {modalFileMeta.fileName}
+                        </span>
+                        <span className="block text-[11px] text-slate-500 dark:text-slate-400">
+                          Teacher Assignment Attachment
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handlePreviewAssignment(activeModalAssignment)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-slate-700 transition-colors shadow-2xs"
+                      >
+                        <Eye className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
+                        <span>Preview Assignment</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDownloadAssignment(activeModalAssignment)}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 transition-colors shadow-2xs"
+                      >
+                        <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span>Download Assignment</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="space-y-2">
                 <label htmlFor="submission-pdf" className="block text-xs font-semibold text-slate-900 dark:text-slate-200">
                   Completed Workings (PDF only)

@@ -47,8 +47,8 @@ interface TeacherAdminProps {
   onAddSession: (session: Omit<ScheduleSession, 'id'>) => Promise<boolean>;
   onUpdateSession: (id: string, updates: Partial<Omit<ScheduleSession, 'id'>>) => Promise<boolean>;
   onDeleteSession: (id: string) => void;
-  onAddAssignment: (assignment: Omit<Assignment, 'id'>) => Promise<boolean>;
-  onUpdateAssignment: (id: string, updates: Partial<Omit<Assignment, 'id'>>) => Promise<boolean>;
+  onAddAssignment: (assignment: Omit<Assignment, 'id'>) => Promise<boolean | { success: boolean; error?: string }>;
+  onUpdateAssignment: (id: string, updates: Partial<Omit<Assignment, 'id'>>) => Promise<boolean | { success: boolean; error?: string }>;
   onGradeAssignment: (
     assignmentId: string,
     studentId: string,

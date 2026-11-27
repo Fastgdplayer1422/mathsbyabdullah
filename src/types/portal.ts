@@ -125,6 +125,11 @@ export interface Assignment {
   attachment?: UploadedFileMeta;
   fileUrl?: string;
   fileName?: string;
+  attachmentUrl?: string;
+  pdfUrl?: string;
+  materialUrl?: string;
+  storagePath?: string;
+  rawRow?: any;
 }
 
 export interface StudyMaterial {

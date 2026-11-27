@@ -15,7 +15,11 @@ const optionalColumns: Record<string, ReadonlySet<string>> = {
     'review_storage_path', 'review_file_name', 'review_file_size', 'review_file_type'
   ]),
   class_sessions: new Set(['meeting_url']),
-  assignments: new Set(['description', 'resource_url', 'resource_label', 'attachment_path', 'attachment_name', 'attachment_size', 'attachment_type', 'file_url', 'file_name']),
+  assignments: new Set([
+    'description', 'resource_url', 'resource_label', 'attachment_path', 'attachment_name',
+    'attachment_size', 'attachment_type', 'file_url', 'file_name', 'storage_path',
+    'pdf_url', 'attachment_url', 'material_url'
+  ]),
   activity_logs: new Set(['details', 'created_at']),
   app_settings: new Set(['live_hero', 'updated_at']),
 };

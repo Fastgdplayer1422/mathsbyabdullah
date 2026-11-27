@@ -30,8 +30,8 @@ import { PdfPreviewDialog } from '../PdfPreviewDialog';
 
 interface ContentManagerProps {
   state: PortalState;
-  onAddAssignment: (assignment: Omit<Assignment, 'id'>) => Promise<boolean>;
-  onUpdateAssignment: (id: string, updates: Partial<Omit<Assignment, 'id'>>) => Promise<boolean>;
+  onAddAssignment: (assignment: Omit<Assignment, 'id'>) => Promise<boolean | { success: boolean; error?: string }>;
+  onUpdateAssignment: (id: string, updates: Partial<Omit<Assignment, 'id'>>) => Promise<boolean | { success: boolean; error?: string }>;
   onGradeAssignment: (
     assignmentId: string,
     studentId: string,
@@ -42,7 +42,7 @@ interface ContentManagerProps {
   onDeleteAssignment: (id: string) => void;
   onAddMaterial: (material: Omit<StudyMaterial, 'id'>) => Promise<boolean>;
   onDeleteMaterial: (id: string) => void;
-  onNotify: (msg: string) => void;
+  onNotify: (msg: string, type?: 'success' | 'error') => void;
 }
 
 export const ContentManager: React.FC<ContentManagerProps> = ({
@@ -92,7 +92,7 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
   const [previewAttachment, setPreviewAttachment] = useState<UploadedFileMeta | null>(null);
   const [savingAction, setSavingAction] = useState<string | null>(null);
 
-  const saveWithFeedback = async (action: string, save: () => Promise<boolean>) => {
+  const saveWithFeedback = async <T,>(action: string, save: () => Promise<T>): Promise<T> => {
     setSavingAction(action);
     try {
       return await save();
@@ -188,12 +188,15 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
 
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!asgTitle.trim() || !asgDueDate || !asgDescription.trim() || !effectiveAsgCourseId) return;
-    if (!asgAttachment) {
-      onNotify('Upload an assignment file before publishing.');
+    if (!asgTitle.trim() || !asgDueDate || !asgDescription.trim() || !effectiveAsgCourseId) {
+      onNotify('Please fill in all required assignment details.', 'error');
       return;
     }
-    const saved = await saveWithFeedback('assignment', () => onAddAssignment({
+    if (!asgAttachment) {
+      onNotify('Upload an assignment file before publishing.', 'error');
+      return;
+    }
+    const result = await saveWithFeedback('assignment', () => onAddAssignment({
       courseId: effectiveAsgCourseId,
       title: asgTitle.trim(),
       dueDate: asgDueDate,
@@ -202,12 +205,25 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
       resourceLabel: asgResourceLabel.trim() || asgAttachment?.fileName || 'Resource File',
       attachment: asgAttachment || undefined,
     }));
-    if (!saved) return;
+
+    const isSuccess = typeof result === 'boolean' ? result : result?.success;
+    const errorMessage = typeof result === 'object' && result?.error
+      ? result.error
+      : 'Failed to upload assignment file. Please try again.';
+
+    if (!isSuccess) {
+      onNotify(errorMessage, 'error');
+      return;
+    }
+
     setAsgTitle('');
     setAsgDescription('');
     setAsgResourceUrl('');
     setAsgAttachment(null);
-    onNotify('Published new assignment with file to Student Portal');
+    if (asgFileInputRef.current) {
+      asgFileInputRef.current.value = '';
+    }
+    onNotify('Published new assignment with attached file to Student Portal', 'success');
   };
 
   const handleCreateMaterial = async (e: React.FormEvent) => {
@@ -242,7 +258,7 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
   const handleSaveEditAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingAsg) return;
-    const saved = await saveWithFeedback('edit', () => onUpdateAssignment(editingAsg.id, {
+    const result = await saveWithFeedback('edit', () => onUpdateAssignment(editingAsg.id, {
       courseId: editingAsg.courseId,
       title: editingAsg.title.trim(),
       dueDate: editingAsg.dueDate,
@@ -251,8 +267,18 @@ export const ContentManager: React.FC<ContentManagerProps> = ({
       resourceLabel: editingAsg.resourceLabel?.trim(),
       attachment: editingAsg.attachment,
     }));
-    if (!saved) return;
-    onNotify(`Updated "${editingAsg.title}"`);
+
+    const isSuccess = typeof result === 'boolean' ? result : result?.success;
+    const errorMessage = typeof result === 'object' && result?.error
+      ? result.error
+      : 'Failed to update assignment.';
+
+    if (!isSuccess) {
+      onNotify(errorMessage, 'error');
+      return;
+    }
+
+    onNotify(`Updated "${editingAsg.title}"`, 'success');
     setEditingAsg(null);
   };
 
